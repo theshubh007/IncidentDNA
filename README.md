@@ -7,19 +7,6 @@ When a deploy goes wrong, IncidentDNA detects the anomaly, runs 3 AI agents to i
 
 ---
 
-## Snowflake Access
-
-| Field    | Value |
-|----------|-------|
-| Account  | `sfsehol-llama_lounge_hackathon_sudhag` |
-| URL      | https://sfsehol-llama_lounge_hackathon_sudhag.snowflakecomputing.com |
-| Username | `USER` |
-| Password | `sn0wf@ll` |
-| Database | `INCIDENTDNA` |
-| Warehouse | `COMPUTE_WH` |
-
----
-
 ## Quick Start
 
 ```bash
@@ -73,16 +60,16 @@ dashboard/ (React :5173)        ← Live dashboard
 ## .env
 
 ```
-SNOWFLAKE_ACCOUNT=sfsehol-llama_lounge_hackathon_sudhag
-SNOWFLAKE_USER=USER
-SNOWFLAKE_PASSWORD=sn0wf@ll
+SNOWFLAKE_ACCOUNT=<your-account>
+SNOWFLAKE_USER=<username>
+SNOWFLAKE_PASSWORD=<password>
 SNOWFLAKE_DATABASE=INCIDENTDNA
 SNOWFLAKE_WAREHOUSE=COMPUTE_WH
 SNOWFLAKE_ROLE=ACCOUNTADMIN
 GEMINI_API_KEY=<your key — free at aistudio.google.com/apikey>
 GROQ_API_KEY=<backup LLM — free at console.groq.com>
-COMPOSIO_API_KEY=ak_Pv532zVAVQJoFTReaSgt
-GITHUB_REPO=theshubh007/IncidentDNA
+COMPOSIO_API_KEY=<your key>
+GITHUB_REPO=<owner/repo>
 SLACK_CHANNEL=#incidents
 ```
 
