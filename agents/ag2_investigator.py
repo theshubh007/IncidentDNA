@@ -79,7 +79,7 @@ STEP 2 — Find similar past incidents:
 
 STEP 3 — Query live metric deviations:
   Use tool: query_snowflake
-  SQL: SELECT metric_name, current_value, baseline_avg, z_score FROM ANALYTICS.METRIC_DEVIATIONS WHERE service = '{service}' ORDER BY z_score DESC LIMIT 10
+  SQL: SELECT metric_name, current_value, baseline_avg, z_score FROM ANALYTICS.METRIC_DEVIATIONS WHERE service_name = '{service}' ORDER BY z_score DESC LIMIT 10
 
 === SYNTHESIS RULES ===
 - If runbook + past incident both point to the same cause → confidence >= 0.85

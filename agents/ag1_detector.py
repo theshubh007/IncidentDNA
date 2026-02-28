@@ -42,12 +42,12 @@ Details        : {event.get('details', {})}
 
 === YOUR STEPS ===
 1. Run this query to get the blast radius:
-   SELECT depends_on FROM RAW.SERVICE_DEPENDENCIES WHERE service = '{service}'
+   SELECT depends_on FROM RAW.SERVICE_DEPENDENCIES WHERE service_name = '{service}'
 
 2. Run this query to confirm severity from live metrics:
    SELECT metric_name, current_value, baseline_avg, z_score, severity
    FROM ANALYTICS.METRIC_DEVIATIONS
-   WHERE service = '{service}'
+   WHERE service_name = '{service}'
    ORDER BY z_score DESC
    LIMIT 10
 

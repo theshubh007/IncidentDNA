@@ -49,7 +49,7 @@ Service           : {service}
 
 CHECK 1 — Alternative causes:
   What ELSE could produce these exact metrics for {service}?
-  Query if needed: SELECT metric_name, current_value, z_score FROM ANALYTICS.METRIC_DEVIATIONS WHERE service = '{service}' LIMIT 10
+  Query if needed: SELECT metric_name, current_value, z_score FROM ANALYTICS.METRIC_DEVIATIONS WHERE service_name = '{service}' LIMIT 10
   Are there other equally plausible explanations?
 
 CHECK 2 — Evidence quality:

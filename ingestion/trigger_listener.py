@@ -16,7 +16,7 @@ load_dotenv()
 
 # Initialize Composio with user session
 composio = Composio()
-session = composio.create(user_id="incidentdna_system")
+session = composio.create(user_id="incidentdna-agent")
 
 def inject_synthetic_spike(service_name: str):
     """Inject synthetic metric spike to simulate incident"""

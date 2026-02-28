@@ -7,7 +7,7 @@ class QuerySnowflakeTool(BaseTool):
     description: str = (
         "Run a SELECT query against Snowflake and return results as a string. "
         "Input must be a valid SQL SELECT statement. Only SELECT is allowed. "
-        "Example: SELECT metric_name, current_value FROM ANALYTICS.METRIC_DEVIATIONS WHERE service='payment-service' LIMIT 10"
+        "Example: SELECT metric_name, current_value FROM ANALYTICS.METRIC_DEVIATIONS WHERE service_name='payment-service' LIMIT 10"
     )
 
     def _run(self, sql: str) -> str:

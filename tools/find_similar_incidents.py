@@ -19,7 +19,7 @@ class FindSimilarIncidentsTool(BaseTool):
                     title,
                     root_cause,
                     fix_applied,
-                    service,
+                    service_name,
                     mttr_minutes,
                     ROUND(
                         SNOWFLAKE.CORTEX.SIMILARITY(

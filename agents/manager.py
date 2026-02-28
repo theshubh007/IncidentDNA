@@ -88,12 +88,11 @@ def _log_decision(
     try:
         run_dml(
             """INSERT INTO AI.DECISIONS
-                   (event_id, agent_name, input, output, reasoning, confidence)
-               VALUES (%s, %s, PARSE_JSON(%s), PARSE_JSON(%s), %s, %s)""",
+                   (event_id, agent_name, output, reasoning, confidence)
+               VALUES (%s, %s, PARSE_JSON(%s), %s, %s)""",
             (
                 event_id,
                 agent_name,
-                json.dumps(input_data),
                 json.dumps(output_data),
                 reasoning[:4000],  # truncate very long reasoning
                 round(float(confidence), 4),
@@ -284,14 +283,13 @@ def run_incident_crew(event: dict) -> dict:
     try:
         run_dml(
             """INSERT INTO AI.INCIDENT_HISTORY
-                   (event_id, service, root_cause, fix_applied, severity, confidence, mttr_minutes)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                   (event_id, service_name, root_cause, fix_applied, confidence, mttr_minutes)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
             (
                 event["event_id"],
                 event["service"],
                 root_cause,
                 fix,
-                severity,
                 investigation["confidence"],
                 0,  # mttr updated externally once incident is truly resolved
             ),
