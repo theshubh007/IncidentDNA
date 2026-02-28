@@ -1414,7 +1414,7 @@ ngrok http 8000
 
 ---
 
-**Built by:** Prem Shah + Team at Llama Lounge × Snowflake Hackathon, 2026  
+**Built by:** Team at Llama Lounge × Snowflake Hackathon, 2026  
 **Stack:** Snowflake Cortex · CrewAI · Composio · Streamlit · Llama 3.1-70B · Python · FastAPI  
 
 *"First time is hard. Second time is instant. That's the DNA."* 🧬
