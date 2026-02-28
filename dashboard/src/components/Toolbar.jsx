@@ -108,8 +108,20 @@ export default function Toolbar() {
                     <span className="badge" />
                 </button>
 
-                <div className="user-avatar" id="user-menu" title="User menu">
-                    <User size={14} />
+                <div className="user-avatar" id="user-menu" title="User menu"
+                    style={{
+                        width: '32px', height: '32px', borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', position: 'relative', border: '2px solid rgba(99,102,241,0.3)',
+                    }}
+                >
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#fff', lineHeight: 1 }}>PS</span>
+                    <span style={{
+                        position: 'absolute', bottom: '-1px', right: '-1px',
+                        width: '10px', height: '10px', borderRadius: '50%',
+                        background: '#22c55e', border: '2px solid var(--bg-primary)',
+                    }} />
                 </div>
             </div>
         </header>
