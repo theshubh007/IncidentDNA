@@ -16,11 +16,12 @@ import os
 import json
 import time
 import hashlib
-from composio import Composio, Action
+from typing import Any
 from dotenv import load_dotenv
 from utils.snowflake_conn import run_dml, run_query
 
 load_dotenv()
+os.environ.setdefault("COMPOSIO_CACHE_DIR", "/tmp/composio-cache")
 
 # Fixed user ID for this agent — must match the user that authenticated
 # GitHub and Slack in the Composio dashboard
@@ -29,12 +30,13 @@ COMPOSIO_USER_ID = "pg-test-a6c32032-f3c5-43d2-9090-e16ffbd46f0d"
 MAX_RETRIES = 2
 RETRY_BACKOFF_BASE = 2  # seconds
 
-_client: Composio | None = None
+_client: Any | None = None
 
 
-def _get_client() -> Composio:
+def _get_client():
     global _client
     if _client is None:
+        from composio import Composio
         _client = Composio(api_key=os.getenv("COMPOSIO_API_KEY"))
     return _client
 
@@ -47,7 +49,31 @@ def _idempotency_key(action_type: str, event_id: str) -> str:
     return hashlib.sha256(f"{action_type}:{event_id}".encode()).hexdigest()[:32]
 
 
+def _existing_status(key: str) -> str | None:
+    rows = run_query(
+        "SELECT status FROM AI.ACTIONS WHERE idempotency_key = %s",
+        (key,),
+    )
+    return rows[0]["STATUS"] if rows else None
+
+
 def _record_action(event_id: str, action_type: str, key: str, payload: dict) -> None:
+    existing = _existing_status(key)
+    if existing in {"FAILED", "FALLBACK_LOGGED"}:
+        run_dml(
+            """UPDATE AI.ACTIONS
+                  SET event_id = %s,
+                      payload = PARSE_JSON(%s),
+                      status = 'PENDING',
+                      executed_at = CURRENT_TIMESTAMP()
+                WHERE idempotency_key = %s""",
+            (event_id, json.dumps(payload), key),
+        )
+        return
+
+    if existing:
+        return
+
     run_dml(
         """INSERT INTO AI.ACTIONS
                (event_id, action_type, idempotency_key, payload, status)
@@ -58,28 +84,25 @@ def _record_action(event_id: str, action_type: str, key: str, payload: dict) -> 
 
 def _update_status(key: str, status: str) -> None:
     run_dml(
-        "UPDATE AI.ACTIONS SET status = %s WHERE idempotency_key = %s",
+        """UPDATE AI.ACTIONS
+              SET status = %s,
+                  executed_at = CURRENT_TIMESTAMP()
+            WHERE idempotency_key = %s""",
         (status, key),
     )
 
 
 def _already_sent(key: str) -> str | None:
-    """Returns the status only if SENT (to skip). FAILED/FALLBACK entries are deleted so we retry."""
-    rows = run_query(
-        "SELECT status FROM AI.ACTIONS WHERE idempotency_key = %s", (key,)
-    )
-    if not rows:
+    """Returns SENT to skip duplicate. FAILED/FALLBACK return None so _record_action retries."""
+    status = _existing_status(key)
+    if status in {"FAILED", "FALLBACK_LOGGED"}:
         return None
-    status = rows[0]["STATUS"]
-    if status == "SENT":
-        return status
-    # For FAILED / FALLBACK_LOGGED / PENDING — delete and allow a fresh attempt
-    run_dml("DELETE FROM AI.ACTIONS WHERE idempotency_key = %s", (key,))
-    return None
+    return status
 
 
 def _execute_with_retry(action_name: str, payload: dict) -> None:
     """Execute a Composio action with retry logic and exponential backoff."""
+    from composio import Action
     action = Action(action_name)
     entity = _get_client().get_entity(id=COMPOSIO_USER_ID)
     last_error = None

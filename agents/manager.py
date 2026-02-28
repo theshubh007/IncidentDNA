@@ -435,7 +435,26 @@ Return ONLY JSON:
         )
         print(f"[MANAGER] Incident DNA stored — MTTR={mttr_minutes}min (detect→investigate→alert→resolve)")
     except Exception as e:
-        print(f"[MANAGER] Warning: failed to store DNA: {e}")
+        print(f"[MANAGER] Full incident history insert failed, trying compact schema fallback: {e}")
+        try:
+            run_dml(
+                """INSERT INTO AI.INCIDENT_HISTORY
+                       (event_id, service_name, root_cause, fix_applied,
+                        mttr_minutes, confidence, resolved_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (
+                    event["event_id"],
+                    event["service"],
+                    root_cause,
+                    fix,
+                    mttr_minutes,
+                    investigation["confidence"],
+                    ts_resolved.strftime("%Y-%m-%d %H:%M:%S"),
+                ),
+            )
+            print(f"[MANAGER] Incident DNA stored via compact schema fallback — MTTR={mttr_minutes}min")
+        except Exception as fallback_error:
+            print(f"[MANAGER] Warning: failed to store DNA: {fallback_error}")
 
     result = {
         "event_id":     event["event_id"],
