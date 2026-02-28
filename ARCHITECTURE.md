@@ -1,7 +1,11 @@
-# IncidentDNA — Architecture
+# IncidentDNA - Architecture
 
-> **Auto-updated.** Run `python scripts/gen_architecture.py` manually,
+> **Auto-updated.** Run `python3 scripts/gen_architecture.py` manually,
 > or it runs automatically on every `git pull` / `git commit` via hooks.
+>
+> **View diagrams:** Open this file in VSCode and press `Cmd+Shift+V` (Mac) or `Ctrl+Shift+V` (Windows/Linux).
+> Requires extension: **Markdown Preview Mermaid Support** (`bierner.markdown-mermaid`) — install from VSCode Extensions sidebar.
+> Or just open on **GitHub** — Mermaid renders natively there.
 
 ---
 
@@ -27,35 +31,35 @@ _Last updated: 2026-02-27 21:22 by scripts/gen_architecture.py_
 
 ```mermaid
 flowchart TD
-    A["🔀 GitHub Commit"] --> B
-    C["💬 Slack Message"] --> B
+    A["GitHub Commit"] --> B
+    C["Slack Message"] --> B
 
-    B["📡 Composio WebSocket\ningestion/trigger_listener.py"]
+    B["Composio WebSocket<br/>ingestion/trigger_listener.py"]
 
-    B --> D["🗄️ RAW.DEPLOY_EVENTS\n(insert record)"]
-    B --> E["📊 RAW.METRICS\n(inject spike: error_rate=0.22, latency=2100ms)"]
+    B --> D["RAW.DEPLOY_EVENTS<br/>insert record"]
+    B --> E["RAW.METRICS<br/>inject spike: error_rate=0.22, latency=2100ms"]
 
-    E --> F["⚡ ANALYTICS.METRIC_DEVIATIONS\ndynamic table — refreshes every 30s\nz-score anomaly detection"]
+    E --> F["ANALYTICS.METRIC_DEVIATIONS<br/>dynamic table, refreshes every 30s<br/>z-score anomaly detection"]
 
-    F --> G{"Anomaly\ndetected?\nz_score > 2"}
-    G -- "No" --> H["⏭️ Skip pipeline"]
-    G -- "Yes" --> I
+    F --> G{"Anomaly detected?<br/>z_score > 2"}
+    G -- No --> H["Skip pipeline"]
+    G -- Yes --> I
 
-    I["🧠 run_incident_crew(event)\nagents/manager.py"]
+    I["run_incident_crew<br/>agents/manager.py"]
 
-    I --> AG1["🔍 Ag1 — Detector\nSeverity + Blast Radius"]
-    AG1 --> AG2["🔬 Ag2 — Investigator\n3-source evidence chain"]
-    AG2 --> AG5["⚖️ Ag5 — Validator\nAdversarial judge"]
+    I --> AG1["Ag1 - Detector<br/>Severity + Blast Radius"]
+    AG1 --> AG2["Ag2 - Investigator<br/>3-source evidence chain"]
+    AG2 --> AG5["Ag5 - Validator<br/>Adversarial judge"]
 
-    AG5 --> V{"APPROVE\nor DEBATE?"}
-    V -- "DEBATE\n(max 2 rounds)" --> AG2
-    V -- "APPROVED" --> ACT["⚡ Execute Actions"]
+    AG5 --> V{"APPROVE or DEBATE?"}
+    V -- "DEBATE - max 2 rounds" --> AG2
+    V -- APPROVED --> ACT["Execute Actions"]
 
-    ACT --> SL["📢 Slack Alert\n#incidents"]
-    ACT --> GH["🐛 GitHub Issue\ntheshubh007/IncidentDNA"]
-    ACT --> DB["💾 AI.INCIDENT_HISTORY\n(MTTR, root cause, fix)"]
+    ACT --> SL["Slack Alert<br/>#incidents"]
+    ACT --> GH["GitHub Issue<br/>theshubh007/IncidentDNA"]
+    ACT --> DB["AI.INCIDENT_HISTORY<br/>MTTR, root cause, fix"]
 
-    DB --> UI["📊 React Dashboard\ndashboard/"]
+    DB --> UI["React Dashboard<br/>dashboard/"]
 
     style A fill:#2da44e,color:#fff
     style C fill:#4a154b,color:#fff
@@ -71,44 +75,44 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EVT["📨 event dict\n{event_id, service,\nanomalytype, severity}"]
+    EVT["event dict<br/>event_id, service, anomaly_type, severity"]
 
     EVT --> AG1
 
-    subgraph P1["Phase 1 — Detect"]
-        AG1["🔍 Ag1 Detector\nag1_detector.py"]
-        AG1 -->|"query_snowflake:\nSELECT depends_on FROM\nRAW.SERVICE_DEPENDENCIES"| SF_DEP[("SERVICE_DEPENDENCIES")]
-        AG1 -->|"query_snowflake:\nSELECT metric_name, z_score\nFROM ANALYTICS.METRIC_DEVIATIONS"| SF_MET[("METRIC_DEVIATIONS")]
-        AG1 --> OUT1["📤 {severity: P1|P2|P3,\nblast_radius: [...],\nclassification: '...'}"]
+    subgraph P1["Phase 1 - Detect"]
+        AG1["Ag1 Detector<br/>ag1_detector.py"]
+        AG1 -->|"query_snowflake<br/>SERVICE_DEPENDENCIES"| SF_DEP[("SERVICE_DEPENDENCIES")]
+        AG1 -->|"query_snowflake<br/>METRIC_DEVIATIONS"| SF_MET[("METRIC_DEVIATIONS")]
+        AG1 --> OUT1["severity: P1/P2/P3<br/>blast_radius: list<br/>classification: string"]
     end
 
     OUT1 --> AG2
 
-    subgraph P2["Phase 2 — Investigate"]
-        AG2["🔬 Ag2 Investigator\nag2_investigator.py"]
-        AG2 -->|"search_runbooks:\nCORTEX.SEARCH_PREVIEW"| SF_RB[("RAW.RUNBOOKS")]
-        AG2 -->|"find_similar_incidents:\nCORTEX.SIMILARITY"| SF_PI[("RAW.PAST_INCIDENTS")]
-        AG2 -->|"query_snowflake:\nbaseline_avg, z_score"| SF_MET2[("METRIC_DEVIATIONS")]
-        AG2 --> OUT2["📤 {root_cause: '...',\nconfidence: 0.0-1.0,\nevidence_sources: [...],\nrecommended_action: '...'}"]
+    subgraph P2["Phase 2 - Investigate"]
+        AG2["Ag2 Investigator<br/>ag2_investigator.py"]
+        AG2 -->|"search_runbooks<br/>CORTEX.SEARCH_PREVIEW"| SF_RB[("RAW.RUNBOOKS")]
+        AG2 -->|"find_similar_incidents<br/>CORTEX.SIMILARITY"| SF_PI[("RAW.PAST_INCIDENTS")]
+        AG2 -->|"query_snowflake<br/>baseline_avg, z_score"| SF_MET2[("METRIC_DEVIATIONS")]
+        AG2 --> OUT2["root_cause: string<br/>confidence: 0.0-1.0<br/>evidence_sources: list<br/>recommended_action: string"]
     end
 
     OUT2 --> AG5
 
-    subgraph P3["Phase 3 — Validate (max 2 rounds)"]
-        AG5["⚖️ Ag5 Validator\nag5_validator.py"]
-        AG5 -->|"query_snowflake:\nalternative causes check"| SF_MET3[("METRIC_DEVIATIONS")]
-        AG5 --> OUT3["📤 {verdict: APPROVED|DEBATE,\nconfidence_adjustment: ±float,\nobjections: [...],\nnotes: '...'}"]
+    subgraph P3["Phase 3 - Validate, max 2 rounds"]
+        AG5["Ag5 Validator<br/>ag5_validator.py"]
+        AG5 -->|"query_snowflake<br/>alternative causes check"| SF_MET3[("METRIC_DEVIATIONS")]
+        AG5 --> OUT3["verdict: APPROVED or DEBATE<br/>confidence_adjustment: float<br/>objections: list"]
     end
 
-    OUT3 -->|"DEBATE → re-investigate"| AG2
+    OUT3 -->|"DEBATE - re-investigate"| AG2
     OUT3 -->|"APPROVED"| MGR
 
-    subgraph P4["Phase 4 — Act"]
-        MGR["🧠 Manager\nagents/manager.py"]
-        MGR -->|"post_slack_alert()"| SLA["📢 Slack"]
-        MGR -->|"create_github_issue()"| GHA["🐛 GitHub"]
-        MGR -->|"INSERT"| DEC[("AI.DECISIONS\nevery agent step")]
-        MGR -->|"INSERT"| INC[("AI.INCIDENT_HISTORY\nfinal record")]
+    subgraph P4["Phase 4 - Act"]
+        MGR["Manager<br/>agents/manager.py"]
+        MGR -->|"post_slack_alert"| SLA["Slack"]
+        MGR -->|"create_github_issue"| GHA["GitHub"]
+        MGR -->|"INSERT"| DEC[("AI.DECISIONS<br/>every agent step")]
+        MGR -->|"INSERT"| INC[("AI.INCIDENT_HISTORY<br/>final record")]
     end
 
     style P1 fill:#e8f4f8,stroke:#0066cc
@@ -204,7 +208,7 @@ erDiagram
         timestamp resolved_at
     }
 
-    RAW_METRICS ||--o{ ANALYTICS_METRIC_DEVIATIONS : "aggregated into (dynamic table)"
+    RAW_METRICS ||--o{ ANALYTICS_METRIC_DEVIATIONS : "aggregated into dynamic table"
     RAW_DEPLOY_EVENTS ||--o{ AI_DECISIONS : "triggers pipeline"
     AI_DECISIONS }o--|| AI_INCIDENT_HISTORY : "resolved into"
     AI_DECISIONS }o--o{ AI_ACTIONS : "causes"
@@ -212,29 +216,29 @@ erDiagram
 
 ---
 
-## 4. Tool ↔ Agent Matrix
+## 4. Tool to Agent Matrix
 
 ```mermaid
 graph LR
     subgraph Agents
-        AG1["🔍 Ag1\nDetector"]
-        AG2["🔬 Ag2\nInvestigator"]
-        AG5["⚖️ Ag5\nValidator"]
-        MGR["🧠 Manager"]
+        AG1["Ag1 Detector"]
+        AG2["Ag2 Investigator"]
+        AG5["Ag5 Validator"]
+        MGR["Manager"]
     end
 
     subgraph Tools["tools/"]
-        T1["query_snowflake.py\nGeneric SELECT"]
-        T2["search_runbooks.py\nCORTEX.SEARCH_PREVIEW"]
-        T3["find_similar_incidents.py\nCORTEX.SIMILARITY"]
-        T4["composio_actions.py\nSlack + GitHub"]
-        T5["idempotency.py\nSHA256 dedup"]
+        T1["query_snowflake.py<br/>Generic SELECT"]
+        T2["search_runbooks.py<br/>CORTEX.SEARCH_PREVIEW"]
+        T3["find_similar_incidents.py<br/>CORTEX.SIMILARITY"]
+        T4["composio_actions.py<br/>Slack + GitHub"]
+        T5["idempotency.py<br/>SHA256 dedup"]
     end
 
     subgraph External
-        SF[("Snowflake\nIncidentDNA DB")]
-        SL["Slack\n#incidents"]
-        GH["GitHub\ntheshubh007/IncidentDNA"]
+        SF[("Snowflake<br/>IncidentDNA DB")]
+        SL["Slack<br/>#incidents"]
+        GH["GitHub<br/>theshubh007/IncidentDNA"]
     end
 
     AG1 --> T1
@@ -263,15 +267,15 @@ graph LR
 
 ```mermaid
 flowchart LR
-    A["CrewAI Agent\n(ag1, ag2, ag5)"] --> B
+    A["CrewAI Agent<br/>ag1, ag2, ag5"] --> B
 
-    B["utils/snowflake_llm.py\nSnowflakeCortexLLM\nextends BaseChatModel"]
+    B["utils/snowflake_llm.py<br/>SnowflakeCortexLLM<br/>extends BaseChatModel"]
 
-    B --> C["utils/snowflake_conn.py\nget_connection()"]
-    C --> D[("Snowflake\nCORTEX.COMPLETE\n'llama3.1-70b'")]
+    B --> C["utils/snowflake_conn.py<br/>get_connection()"]
+    C --> D[("Snowflake<br/>CORTEX.COMPLETE<br/>llama3.1-70b")]
 
-    D --> E["Raw JSON response\n_extract_text()"]
-    E --> F["AIMessage\nback to CrewAI"]
+    D --> E["Raw JSON response<br/>_extract_text()"]
+    E --> F["AIMessage<br/>back to CrewAI"]
 
     style B fill:#0066cc,color:#fff
     style D fill:#29B5E8,color:#fff
@@ -305,7 +309,7 @@ IncidentDNA/
 ├── snowflake/                  ❌ NOT CREATED (P1 task)
 │   ├── 01_schema.sql                 ❌  DDL: RAW.*, AI.*, ANALYTICS.*
 │   ├── 02_seed_data.sql              ❌  Runbooks, past incidents, sample metrics
-│   ├── 03_dynamic_tables.sql         ❌  ANALYTICS.METRIC_DEVIATIONS (z-score)
+│   └── 03_dynamic_tables.sql         ❌  ANALYTICS.METRIC_DEVIATIONS (z-score)
 │
 ├── ingestion/                  ❌ NOT CREATED (P3 task)
 │   └── trigger_listener.py         ❌  Composio WebSocket → run_incident_crew()
@@ -314,33 +318,33 @@ IncidentDNA/
 │   └── src/
 │       ├── pages/              8 pages: Overview, Incidents, Releases...
 │       ├── api.js                      Toggle VITE_USE_LIVE_DATA for real data
-│       ├── mockData.js                 Offline demo data
+│       └── mockData.js                 Offline demo data
 │
 ├── CLAUDE.md                          ✅  Claude Code auto-loads this every session
 ├── ARCHITECTURE.md                    ✅  This file — auto-updated by hooks
-├── gen_architecture.py                ✅  Auto-updates this file
+├── scripts/gen_architecture.py        ✅  Auto-updates this file
 ├── requirements.txt                   ✅
 ├── test_agent.py                      ✅  python test_agent.py [snowflake|agents]
-├── .env                               ✅  Credentials
+└── .env                               ✅  Credentials
 ```
 <!-- FILES_END -->
 
 ---
 
-## 7. Integration Contracts (P1 → P2 → P3)
+## 7. Integration Contracts (P1 to P2 to P3)
 
 ```mermaid
 sequenceDiagram
-    participant P1 as P1 (Snowflake SQL)
-    participant P2 as P2 (Agent Layer)
-    participant P3 as P3 (Frontend)
+    participant P1 as P1 Snowflake SQL
+    participant P2 as P2 Agent Layer
+    participant P3 as P3 Frontend
 
     P1->>P2: RAW.RUNBOOKS (Cortex Search enabled)
     P1->>P2: RAW.PAST_INCIDENTS
     P1->>P2: RAW.SERVICE_DEPENDENCIES
     P1->>P2: ANALYTICS.METRIC_DEVIATIONS (dynamic table)
 
-    P2->>P3: run_incident_crew(event) → result dict
+    P2->>P3: run_incident_crew(event) returns result dict
     P2->>P3: AI.DECISIONS table (agent reasoning steps)
     P2->>P3: AI.ACTIONS table (Slack/GitHub audit log)
     P2->>P3: AI.INCIDENT_HISTORY (MTTR + resolution)
