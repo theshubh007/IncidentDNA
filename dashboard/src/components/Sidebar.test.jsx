@@ -21,9 +21,16 @@ describe('Sidebar Component', () => {
         expect(screen.getByText('Settings')).toBeInTheDocument();
     });
 
-    it('renders the brand name', () => {
+    it('renders the product brand name', () => {
         renderWithProviders(<Sidebar />);
-        expect(screen.getByText('FortressAI')).toBeInTheDocument();
+        expect(screen.getByText('ReleaseShield')).toBeInTheDocument();
+    });
+
+    it('renders collapsible section labels', () => {
+        renderWithProviders(<Sidebar />);
+        expect(screen.getByText('Dashboard')).toBeInTheDocument();
+        expect(screen.getByText('Operations')).toBeInTheDocument();
+        expect(screen.getByText('Configuration')).toBeInTheDocument();
     });
 
     it('renders the pipeline health status', () => {
