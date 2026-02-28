@@ -44,7 +44,7 @@ A code deployment (git push) can introduce bugs. Our system listens for deployme
 
 | What | Value | Purpose |
 |------|-------|---------|
-| **LLM (AI Brain)** | Google Gemini 2.5 Flash | Powers all 3 agents' reasoning |
+| **LLM (AI Brain)** | Claude Sonnet 4.5 via Snowflake Cortex | Powers all 3 agents' reasoning |
 | **Database** | Snowflake — `INCIDENTDNA` | Stores all metrics, incidents, decisions |
 | **Snowflake Account** | `sfsehol-llama_lounge_hackathon_sudhag` | Hackathon account |
 | **GitHub Repo (target)** | [`theshubh007/IncidentDNA`](https://github.com/theshubh007/IncidentDNA) | Where GitHub issues are auto-created |
@@ -146,7 +146,7 @@ flowchart TD
 
 ## 2. Agent Pipeline (Detail)
 
-> **3 agents run sequentially.** Each agent uses AI (Gemini 2.5 Flash) to reason about the incident. Each agent has specific tools it can call — like querying Snowflake or searching runbooks.
+> **3 agents run sequentially.** Each agent uses AI (Claude Sonnet 4.5 via Snowflake Cortex) to reason about the incident. Each agent has specific tools it can call — like querying Snowflake or searching runbooks.
 
 ```mermaid
 flowchart TD
@@ -316,7 +316,7 @@ graph LR
         SF[("❄️ Snowflake\nDatabase: INCIDENTDNA\nAccount: sfsehol-llama_lounge_hackathon_sudhag")]
         SL["💬 Slack\nChannel: #incidents"]
         GH["🐙 GitHub\nRepo: theshubh007/IncidentDNA\nIssues created here automatically"]
-        GM["🧠 Gemini 2.5 Flash\nGoogle AI Studio\nPowers all agent reasoning"]
+        GM["🧠 Claude Sonnet 4.5\nSnowflake Cortex\nPowers all agent reasoning"]
     end
 
     AG1 --> T1
@@ -398,29 +398,27 @@ flowchart LR
 
 ## 6. LLM Architecture
 
-> **How the AI brain works.** All 3 agents use the same LLM (Gemini 2.5 Flash). The `snowflake_llm.py` file picks the best available LLM automatically based on what API keys are in `.env`.
+> **How the AI brain works.** All 3 agents use Claude Sonnet 4.5 via Snowflake Cortex. The `snowflake_llm.py` file picks the LLM based on what is configured in `.env`.
 
 ```mermaid
 flowchart LR
     A["🤖 CrewAI Agent\nag1, ag2, or ag5"] --> B
 
-    B["utils/snowflake_llm.py\n\nAuto-selects LLM:\n1st choice: Gemini 2.5 Flash ✅ ACTIVE\n2nd choice: Groq llama-3.3-70b\n3rd choice: OpenAI GPT-4o-mini\n4th choice: Snowflake Cortex (disabled on this account)"]
+    B["utils/snowflake_llm.py\n\nLLM priority:\n1st: Snowflake Cortex ✅ ACTIVE\n2nd: Groq llama-3.3-70b\n3rd: OpenAI GPT-4o-mini"]
 
-    B --> C["Google AI Studio\nGemini 2.5 Flash\nFree tier: 15 RPM"]
+    B --> C["Snowflake Cortex\nClaude Sonnet 4.5\nSNOWFLAKE.CORTEX.COMPLETE()"]
 
     C --> D["LLM Response\nAgent reads it and\ndecides next action"]
 
     style B fill:#0066cc,color:#fff
-    style C fill:#4285f4,color:#fff
+    style C fill:#29b5e8,color:#fff
 ```
 
 **Current LLM config in `.env`:**
 ```
-GEMINI_API_KEY=AIzaSyD_M81Fcci18_Knqc7HK2zzTD10ZHwpnqo   ← Google AI Studio key
-GROQ_API_KEY=gsk_K13...                                    ← Backup if Gemini hits limits
+SNOWFLAKE_CORTEX_ENABLED=true   ← uses claude-sonnet-4-5 via Snowflake Cortex
+GROQ_API_KEY=gsk_K13...         ← fallback if Cortex unavailable
 ```
-
-> **Note:** Snowflake Cortex COMPLETE is disabled on the hackathon account. Only Cortex Search (runbooks) and Cortex Similarity (deprecated, using keyword fallback) work.
 
 ---
 
@@ -510,8 +508,8 @@ sequenceDiagram
 | Service | How to Get Access | Used For |
 |---------|------------------|----------|
 | **Snowflake** | Use shared credentials in `.env` | Database for everything |
-| **Gemini API** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) — free | LLM for agents |
-| **Groq API** | [console.groq.com](https://console.groq.com) — free | Backup LLM |
+| **Snowflake Cortex** | Included with Snowflake account | LLM for agents (claude-sonnet-4-5) |
+| **Groq API** | [console.groq.com](https://console.groq.com) — free | Fallback LLM |
 | **Composio** | [app.composio.dev](https://app.composio.dev) — shared API key in `.env` | Slack + GitHub integration |
 | **GitHub** | Connect your GitHub account in Composio dashboard | Creates issues in `theshubh007/IncidentDNA` |
 | **Slack** | Connect your Slack workspace in Composio dashboard | Posts to `#incidents` |

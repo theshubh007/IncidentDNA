@@ -72,8 +72,8 @@ SNOWFLAKE_PASSWORD=<password>
 SNOWFLAKE_DATABASE=INCIDENTDNA
 SNOWFLAKE_WAREHOUSE=COMPUTE_WH
 SNOWFLAKE_ROLE=ACCOUNTADMIN
-GEMINI_API_KEY=<your key — free at aistudio.google.com/apikey>
-GROQ_API_KEY=<backup LLM — free at console.groq.com>
+SNOWFLAKE_CORTEX_ENABLED=true
+GROQ_API_KEY=<fallback LLM — free at console.groq.com>
 COMPOSIO_API_KEY=<your key>
 GITHUB_REPO=<owner/repo>
 SLACK_CHANNEL=#incidents
@@ -86,7 +86,7 @@ SLACK_CHANNEL=#incidents
 ```
 agents/         3 AI agents + manager (CrewAI)
 tools/          Snowflake queries, runbook search, Composio actions
-utils/          Snowflake connection, LLM selector (Gemini → Groq → OpenAI)
+utils/          Snowflake connection, LLM selector (Cortex → Groq → OpenAI)
 snowflake/      SQL files — run once to set up all tables
 ingestion/      trigger_listener.py — Composio WebSocket → pipeline
 dashboard/      React/Vite dashboard (live data via api.py)

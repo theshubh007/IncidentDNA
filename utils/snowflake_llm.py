@@ -2,14 +2,12 @@
 LLM provider for CrewAI agents.
 
 Priority order (auto-selected based on available credentials):
-  1. Snowflake Cortex  -- if SNOWFLAKE_CORTEX_ENABLED=true in .env
-  2. Gemini            -- if GEMINI_API_KEY set (Google AI Studio)
-  3. Groq              -- if GROQ_API_KEY set (free at console.groq.com)
-  4. OpenAI            -- if OPENAI_API_KEY set
+  1. Snowflake Cortex  -- if SNOWFLAKE_CORTEX_ENABLED=true in .env (DEFAULT)
+  2. Groq              -- if GROQ_API_KEY set (free at console.groq.com)
+  3. OpenAI            -- if OPENAI_API_KEY set
 
-Default: Snowflake Cortex COMPLETE (llama3.1-70b).
-Set SNOWFLAKE_CORTEX_ENABLED=true in .env to use Cortex.
-Falls back to Gemini/Groq/OpenAI if Cortex is unavailable.
+Default: Snowflake Cortex COMPLETE (claude-sonnet-4-5).
+SNOWFLAKE_CORTEX_ENABLED=true is set in .env — Cortex is the primary LLM.
 """
 
 import os
@@ -96,17 +94,7 @@ def _make_llm() -> LLM:
         print("[LLM] Using Snowflake Cortex claude-sonnet-4-5")
         return LLM(model="snowflake-cortex/claude-sonnet-4-5", temperature=0.0)
 
-    # Option 2: Gemini (Google AI Studio — free tier)
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    if gemini_key:
-        print("[LLM] Using Gemini 2.5 Flash")
-        return LLM(
-            model="gemini/gemini-2.5-flash",
-            api_key=gemini_key,
-            temperature=0.0,
-        )
-
-    # Option 3: Groq (free -- get key at console.groq.com)
+    # Option 2: Groq (free -- get key at console.groq.com)
     groq_key = os.getenv("GROQ_API_KEY")
     if groq_key:
         print("[LLM] Using Groq llama-3.3-70b-versatile (12k TPM — phase sleeps active)")
@@ -125,11 +113,9 @@ def _make_llm() -> LLM:
 
     raise EnvironmentError(
         "\n\n[LLM] No LLM configured!\n"
-        "  Option A (recommended): Add GEMINI_API_KEY=... to your .env\n"
-        "                          Get key free at https://aistudio.google.com/apikey\n"
+        "  Option A (recommended): Set SNOWFLAKE_CORTEX_ENABLED=true in .env\n"
         "  Option B: Add GROQ_API_KEY=... to your .env (https://console.groq.com)\n"
         "  Option C: Add OPENAI_API_KEY=... to your .env\n"
-        "  Option D: Set SNOWFLAKE_CORTEX_ENABLED=true if your account supports it\n"
     )
 
 
