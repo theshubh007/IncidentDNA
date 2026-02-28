@@ -7,9 +7,14 @@ Called directly by ingestion/trigger_listener.py (no HTTP bridge).
 """
 
 import json
+import logging
 import os
 import re
 from datetime import datetime, timezone
+
+# Suppress noisy LiteLLM proxy warnings (apscheduler not installed — non-fatal)
+logging.getLogger("LiteLLM").setLevel(logging.CRITICAL)
+logging.getLogger("litellm").setLevel(logging.CRITICAL)
 from agents.ag1_detector import make_detector, detector_task
 from agents.ag2_investigator import make_investigator, investigator_task
 from agents.ag3_fix_advisor import make_fix_advisor, fix_advisor_task

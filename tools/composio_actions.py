@@ -100,16 +100,24 @@ def _already_sent(key: str) -> str | None:
     return status
 
 
-def _execute_with_retry(action_name: str, payload: dict) -> None:
-    """Execute a Composio action with retry logic and exponential backoff."""
-    from composio import Action
-    action = Action(action_name)
-    entity = _get_client().get_entity(id=COMPOSIO_USER_ID)
+def _execute_with_retry(action_name: str, payload: dict) -> dict:
+    """Execute a Composio action with retry logic and exponential backoff.
+    Uses Composio SDK v1.0.0-rc2 API: client.tools.execute(slug, arguments, user_id=...).
+    """
+    client = _get_client()
     last_error = None
     for attempt in range(MAX_RETRIES + 1):
         try:
-            entity.execute(action=action, params=payload)
-            return  # success
+            result = client.tools.execute(
+                slug=action_name,
+                arguments=payload,
+                user_id=COMPOSIO_USER_ID,
+                dangerously_skip_version_check=True,
+            )
+            # SDK returns a dict with 'successful', 'data', 'error' keys
+            if isinstance(result, dict) and result.get("successful") is False:
+                raise RuntimeError(result.get("error", "Composio action failed"))
+            return result  # success
         except Exception as e:
             last_error = e
             if attempt < MAX_RETRIES:
