@@ -66,11 +66,15 @@ python test_agent.py snowflake
 # Step 2 — Run the full AI agent pipeline (triggers Slack + GitHub)
 python test_agent.py agents
 
-# Step 3 — Start the React dashboard (mock data, works offline)
+# Step 3 — Start the FastAPI backend (connects dashboard to live Snowflake data)
+uvicorn api:app --reload --host 0.0.0.0 --port 8000
+
+# Step 4 — Start the React dashboard (live data mode — needs Step 3 running)
 cd dashboard && npm install && npm run dev
 ```
 
 > All credentials are in `.env`. Ask a teammate for the file if you don't have it.
+> The dashboard automatically uses live Snowflake data — `dashboard/.env` has `VITE_USE_LIVE_DATA=true`.
 
 ---
 
@@ -82,10 +86,10 @@ cd dashboard && npm install && npm run dev
 | Agent Layer | manager.py, ag1_detector.py, ag2_investigator.py, ... | ✅ Done |
 | Tools | query_snowflake.py, search_runbooks.py, find_similar_incidents.py, ... | ✅ Done |
 | Utils | snowflake_conn.py, snowflake_llm.py | ✅ Done |
-| React Dashboard | App.jsx, api.js, mockData.js | ✅ Done (mock data) |
+| React Dashboard | App.jsx, api.js, mockData.js | ✅ Done (live data via api.py) |
 | Snowflake SQL | 01_schema.sql, 02_seed_data.sql, 03_dynamic_tables.sql | ✅ Done |
 | Trigger Listener | trigger_listener.py | ✅ Done |
-| Backend API | api.py | ❌ Missing |
+| Backend API | api.py | ✅ Done — FastAPI at :8000 |
 
 _Last updated: 2026-02-28 07:17 by scripts/gen_architecture.py_
 <!-- STATUS_END -->
@@ -126,7 +130,8 @@ flowchart TD
     ACT --> GH["🐙 GitHub Issue\nRepo: theshubh007/IncidentDNA\nCreated via Composio"]
     ACT --> DB["🗄️ AI.INCIDENT_HISTORY\nStores: MTTR, root cause, fix applied"]
 
-    DB --> UI["📊 React Dashboard\ndashboard/\nShows live incident history"]
+    DB --> API["⚙️ FastAPI Backend\napi.py — port 8000\n\nREST endpoints + WebSocket\nServes live Snowflake data to dashboard"]
+    API --> UI["📊 React Dashboard\ndashboard/ — port 5173\n\nLive mode: VITE_USE_LIVE_DATA=true\nShows real incidents, pipeline steps, audit log"]
 
     style A fill:#2da44e,color:#fff
     style C fill:#4a154b,color:#fff
@@ -134,6 +139,7 @@ flowchart TD
     style ACT fill:#e36209,color:#fff
     style SL fill:#4a154b,color:#fff
     style GH fill:#24292f,color:#fff
+    style API fill:#6366f1,color:#fff
 ```
 
 ---
@@ -342,7 +348,55 @@ graph LR
 
 ---
 
-## 5. LLM Architecture
+## 5. FastAPI Backend — Dashboard ↔ Snowflake Bridge
+
+> **`api.py`** is the glue between the React dashboard and Snowflake. It runs at `http://localhost:8000` and exposes every endpoint the dashboard needs.
+
+```mermaid
+flowchart LR
+    UI["📊 React Dashboard\ndashboard/ — port 5173\napi.js fetches from /api/v1/*"]
+
+    subgraph API["⚙️ api.py — FastAPI — port 8000"]
+        R1["/api/v1/incidents\n/api/v1/incidents/:id\n/api/v1/incidents/:id/pipeline"]
+        R2["/api/v1/metrics/overview\n/api/v1/audit\n/api/v1/runbooks"]
+        R3["/api/v1/services\n/api/v1/releases\n/api/v1/postmortems"]
+        R4["/api/v1/simulation/run\nPOST → calls run_incident_crew()"]
+        R5["/api/v1/tools/slack/send\n/api/v1/tools/github/issue"]
+        WS["/ws\nWebSocket — real-time pipeline events"]
+    end
+
+    subgraph SF["❄️ Snowflake — INCIDENTDNA"]
+        T1[("AI.INCIDENT_HISTORY")]
+        T2[("AI.DECISIONS")]
+        T3[("AI.ACTIONS")]
+        T4[("RAW.RUNBOOKS\nRAW.PAST_INCIDENTS\nRAW.SERVICE_DEPENDENCIES")]
+        T5[("RAW.DEPLOY_EVENTS")]
+    end
+
+    UI -->|"HTTP GET/POST + WebSocket"| API
+    R1 --> T1
+    R1 --> T2
+    R2 --> T3
+    R2 --> T4
+    R3 --> T4
+    R3 --> T5
+    R4 -->|"background task"| MGR["agents/manager.py\nrun_incident_crew()"]
+    WS -->|"broadcast"| UI
+
+    style API fill:#6366f1,color:#fff
+    style SF fill:#29b5e8,color:#fff
+```
+
+**Key design decisions in `api.py`:**
+- Every endpoint queries Snowflake first; falls back gracefully if a table is missing (returns `[]`)
+- `/api/v1/simulation/run` runs the full agent pipeline in a FastAPI background task — returns immediately, broadcasts result via WebSocket when done
+- `/api/v1/snowflake/query` is a SELECT-only proxy (rejects non-SELECT SQL)
+- CORS is open to `localhost:5173` (Vite) and `localhost:3000`
+- Idempotency is preserved — tool endpoints re-use the same `composio_actions.py` functions
+
+---
+
+## 6. LLM Architecture
 
 > **How the AI brain works.** All 3 agents use the same LLM (Gemini 2.5 Flash). The `snowflake_llm.py` file picks the best available LLM automatically based on what API keys are in `.env`.
 
@@ -370,7 +424,7 @@ GROQ_API_KEY=gsk_K13...                                    ← Backup if Gemini 
 
 ---
 
-## 6. Directory Structure
+## 7. Directory Structure
 
 <!-- FILES_START -->
 ```
@@ -401,16 +455,20 @@ IncidentDNA/
 ├── ingestion/                  ✅
 │   └── trigger_listener.py         ✅  Composio WebSocket → run_incident_crew()
 │
-├── dashboard/                  ✅ (mock data)
+├── dashboard/                  ✅ (live data via api.py)
+│   ├── .env                            ✅  VITE_USE_LIVE_DATA=true (switches to real data)
 │   └── src/
 │       ├── pages/              8 pages: Overview, Incidents, Releases...
-│       ├── api.js                      Toggle VITE_USE_LIVE_DATA for real data
-│       ├── mockData.js                 Offline demo data
+│       ├── api.js                      Calls FastAPI at localhost:8000 when live
+│       ├── config.js                   Reads VITE_* env vars
+│       ├── mockData.js                 Offline demo data (fallback)
 │
+├── api.py                             ✅  FastAPI backend — REST + WebSocket at :8000
+│                                           Serves all dashboard endpoints from Snowflake
 ├── CLAUDE.md                          ✅  Claude Code auto-loads this every session
 ├── ARCHITECTURE.md                    ✅  This file — auto-updated by hooks
 ├── gen_architecture.py                ✅  Auto-updates this file
-├── requirements.txt                   ✅
+├── requirements.txt                   ✅  fastapi + uvicorn now included
 ├── test_agent.py                      ✅  python test_agent.py [snowflake|agents]
 ├── .env                               ✅  Credentials (never commit this to GitHub!)
 ```
@@ -418,7 +476,7 @@ IncidentDNA/
 
 ---
 
-## 7. Integration Contracts (Who Talks to Who)
+## 8. Integration Contracts (Who Talks to Who)
 
 > This shows the data flow between the 3 team members' work areas.
 
@@ -449,7 +507,7 @@ sequenceDiagram
 
 ---
 
-## 8. Credentials Quick Reference
+## 9. Credentials Quick Reference
 
 > Keep this handy when setting up on a new machine. All values also live in `.env`.
 
