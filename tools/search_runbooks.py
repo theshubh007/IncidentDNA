@@ -16,8 +16,7 @@ class SearchRunbooksTool(BaseTool):
             results = run_query(
                 """SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
                   'INCIDENTDNA.RAW.RUNBOOK_SEARCH',
-                  %s,
-                  3
+                  %s
                 ) AS results""",
                 (query.strip(),),
             )

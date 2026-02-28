@@ -3,14 +3,13 @@ LLM provider for CrewAI agents.
 
 Priority order (auto-selected based on available credentials):
   1. Snowflake Cortex  -- if SNOWFLAKE_CORTEX_ENABLED=true in .env
-  2. Groq              -- if GROQ_API_KEY set (free at console.groq.com)
-  3. OpenAI            -- if OPENAI_API_KEY set
+  2. Gemini            -- if GEMINI_API_KEY set (Google AI Studio)
+  3. Groq              -- if GROQ_API_KEY set (free at console.groq.com)
+  4. OpenAI            -- if OPENAI_API_KEY set
 
-For this hackathon: Groq is the default.
+Default: Gemini 2.5 Flash (free tier).
 Cortex COMPLETE is not available on this account type.
 Cortex SEARCH and SIMILARITY still work for tools.
-
-Model used: llama3.1-70b (same model on both Groq and Cortex)
 """
 
 import os
@@ -84,6 +83,7 @@ litellm.custom_provider_map = [
     {"provider": "snowflake-cortex", "custom_handler": _cortex_handler}
 ]
 litellm.set_verbose = False
+litellm.num_retries = 6          # auto-retry with backoff on 429 rate limits
 
 
 # ── Auto-select LLM ───────────────────────────────────────────────────────────
@@ -96,17 +96,28 @@ def _make_llm() -> LLM:
         print("[LLM] Using Snowflake Cortex llama3.1-70b")
         return LLM(model="snowflake-cortex/llama3.1-70b", temperature=0.0)
 
-    # Option 2: Groq (free -- get key at console.groq.com)
-    groq_key = os.getenv("GROQ_API_KEY")
-    if groq_key:
-        print("[LLM] Using Groq llama-3.1-70b-versatile (free)")
+    # Option 2: Gemini (Google AI Studio — free tier)
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if gemini_key:
+        print("[LLM] Using Gemini 2.5 Flash")
         return LLM(
-            model="groq/llama-3.1-70b-versatile",
-            api_key=groq_key,
+            model="gemini/gemini-2.5-flash",
+            api_key=gemini_key,
             temperature=0.0,
         )
 
-    # Option 3: OpenAI
+    # Option 3: Groq (free -- get key at console.groq.com)
+    groq_key = os.getenv("GROQ_API_KEY")
+    if groq_key:
+        print("[LLM] Using Groq llama-3.3-70b-versatile (12k TPM — phase sleeps active)")
+        return LLM(
+            model="groq/llama-3.3-70b-versatile",
+            api_key=groq_key,
+            temperature=0.0,
+            max_retries=6,
+        )
+
+    # Option 4: OpenAI
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
         print("[LLM] Using OpenAI gpt-4o-mini")
@@ -114,10 +125,11 @@ def _make_llm() -> LLM:
 
     raise EnvironmentError(
         "\n\n[LLM] No LLM configured!\n"
-        "  Option A (free): Get a Groq key at https://console.groq.com\n"
-        "                   then add GROQ_API_KEY=... to your .env\n"
-        "  Option B: Add OPENAI_API_KEY=... to your .env\n"
-        "  Option C: Set SNOWFLAKE_CORTEX_ENABLED=true if your account supports it\n"
+        "  Option A (recommended): Add GEMINI_API_KEY=... to your .env\n"
+        "                          Get key free at https://aistudio.google.com/apikey\n"
+        "  Option B: Add GROQ_API_KEY=... to your .env (https://console.groq.com)\n"
+        "  Option C: Add OPENAI_API_KEY=... to your .env\n"
+        "  Option D: Set SNOWFLAKE_CORTEX_ENABLED=true if your account supports it\n"
     )
 
 

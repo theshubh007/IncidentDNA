@@ -13,6 +13,9 @@ class FindSimilarIncidentsTool(BaseTool):
     )
 
     def _run(self, incident_description: str) -> str:
+        # Build keyword filter from the first 3 meaningful words
+        words = [w for w in incident_description.strip().split() if len(w) > 3][:3]
+        keyword = words[0] if words else incident_description.split()[0]
         try:
             results = run_query(
                 """SELECT
@@ -20,18 +23,21 @@ class FindSimilarIncidentsTool(BaseTool):
                     root_cause,
                     fix_applied,
                     service_name,
-                    mttr_minutes,
-                    ROUND(
-                        SNOWFLAKE.CORTEX.SIMILARITY(
-                            %s,
-                            title || ' ' || root_cause
-                        ), 3
-                    ) AS similarity_score
+                    mttr_minutes
                 FROM RAW.PAST_INCIDENTS
-                ORDER BY similarity_score DESC
+                WHERE LOWER(title || ' ' || root_cause) LIKE %s
+                ORDER BY mttr_minutes ASC
                 LIMIT 3""",
-                (incident_description.strip(),),
+                (f"%{keyword.lower()}%",),
             )
+            if not results:
+                # Fallback: return 3 most recent resolved incidents regardless
+                results = run_query(
+                    """SELECT title, root_cause, fix_applied, service_name, mttr_minutes
+                    FROM RAW.PAST_INCIDENTS
+                    ORDER BY mttr_minutes ASC
+                    LIMIT 3""",
+                )
             if not results:
                 return "No similar past incidents found."
             return str(results)

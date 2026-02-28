@@ -51,7 +51,7 @@ def test_snowflake():
         rows = run_query("SELECT * FROM ANALYTICS.METRIC_DEVIATIONS LIMIT 5")
         print(f"  ✅ METRIC_DEVIATIONS — {len(rows)} rows (dynamic table refreshing)")
         for r in rows:
-            print(f"     service={r.get('SERVICE')} metric={r.get('METRIC_NAME')} z_score={r.get('Z_SCORE')}")
+            print(f"     service={r.get('SERVICE_NAME')} metric={r.get('METRIC_NAME')} z_score={r.get('Z_SCORE')}")
     except Exception as e:
         print(f"  ⚠️  METRIC_DEVIATIONS: {e} — run P1's 03_dynamic_tables.sql first")
 
@@ -114,7 +114,7 @@ def test_tools_only():
     print("\n[TEST] Testing query_snowflake tool...")
     from tools.query_snowflake import QuerySnowflakeTool
     t3 = QuerySnowflakeTool()
-    result3 = t3._run("SELECT service, metric_name, z_score FROM ANALYTICS.METRIC_DEVIATIONS LIMIT 3")
+    result3 = t3._run("SELECT service_name, metric_name, z_score FROM ANALYTICS.METRIC_DEVIATIONS LIMIT 3")
     print(f"  Result: {result3}")
 
 

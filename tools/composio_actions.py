@@ -19,7 +19,7 @@ load_dotenv()
 
 # Fixed user ID for this agent — must match the user that authenticated
 # GitHub and Slack in the Composio dashboard
-COMPOSIO_USER_ID = "incidentdna-agent"
+COMPOSIO_USER_ID = "pg-test-a6c32032-f3c5-43d2-9090-e16ffbd46f0d"
 
 _client: Composio | None = None
 
@@ -43,7 +43,7 @@ def _record_action(event_id: str, action_type: str, key: str, payload: dict) -> 
     run_dml(
         """INSERT INTO AI.ACTIONS
                (event_id, action_type, idempotency_key, payload, status)
-           VALUES (%s, %s, %s, PARSE_JSON(%s), 'PENDING')""",
+           SELECT %s, %s, %s, PARSE_JSON(%s), 'PENDING'""",
         (event_id, action_type, key, json.dumps(payload)),
     )
 
@@ -90,15 +90,16 @@ def post_slack_alert(
         f"*Event ID:* `{event_id}`\n"
         f"_Autonomous response in progress…_"
     )
-    channel = os.getenv("SLACK_CHANNEL", "#incidents")
-    payload = {"channel": channel, "text": message}
+    channel = os.getenv("SLACK_CHANNEL", "#incidents").lstrip("#")  # API rejects '#' prefix
+    payload = {"channel": channel, "markdown_text": message}
 
     _record_action(event_id, "SLACK_ALERT", key, payload)
     try:
         _get_client().tools.execute(
-            "SLACKBOT_CHAT_POST_MESSAGE",
+            "SLACK_SEND_MESSAGE",
             payload,
             user_id=COMPOSIO_USER_ID,
+            dangerously_skip_version_check=True,
         )
         _update_status(key, "SENT")
         return "SENT"
@@ -159,6 +160,7 @@ def create_github_issue(
             "GITHUB_CREATE_AN_ISSUE",
             payload,
             user_id=COMPOSIO_USER_ID,
+            dangerously_skip_version_check=True,
         )
         _update_status(key, "SENT")
         return "SENT"

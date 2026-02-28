@@ -89,7 +89,7 @@ def _log_decision(
         run_dml(
             """INSERT INTO AI.DECISIONS
                    (event_id, agent_name, output, reasoning, confidence)
-               VALUES (%s, %s, PARSE_JSON(%s), %s, %s)""",
+               SELECT %s, %s, PARSE_JSON(%s), %s, %s""",
             (
                 event_id,
                 agent_name,
@@ -155,6 +155,7 @@ def run_incident_crew(event: dict) -> dict:
     print(f"[AG1] Detection result: {detection}")
 
     # ── Phase 2: Investigate ─────────────────────────────────────────────────
+
     print("\n[MANAGER] Phase 2: Investigation")
     ag2 = make_investigator()
     t2  = investigator_task(ag2, event, detection)
@@ -178,6 +179,7 @@ def run_incident_crew(event: dict) -> dict:
     print(f"[AG2] Investigation result: {investigation}")
 
     # ── Phase 3: Validate + Debate loop ──────────────────────────────────────
+
     print("\n[MANAGER] Phase 3: Validation")
     debate_round = 0
     approved     = False
@@ -223,6 +225,7 @@ def run_incident_crew(event: dict) -> dict:
 
             if debate_round < MAX_DEBATE_ROUNDS:
                 # Re-run investigator with validator's objections as extra context
+            
                 print(f"\n[MANAGER] Re-running investigation with validator objections...")
                 enriched_event = {
                     **event,
