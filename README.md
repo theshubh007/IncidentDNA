@@ -949,7 +949,460 @@ This proves the system isn't hardcoded.
 
 ---
 
+## 18. Full `requirements.txt`
+
+> P2 finalizes exact versions. Use these as starting point. Pin versions to avoid breakage mid-hackathon.
+
+```txt
+# CrewAI + Agents
+crewai==0.28.0
+crewai-tools==0.4.6
+
+# Composio
+composio-crewai==0.5.9
+composio-core==0.5.9
+
+# Snowflake
+snowflake-connector-python==3.7.0
+snowflake-sqlalchemy==1.5.3
+
+# API Server (for CrewAI HTTP endpoint — see Section 20)
+fastapi==0.110.0
+uvicorn==0.29.0
+
+# Frontend
+streamlit==1.32.0
+plotly==5.20.0
+pandas==2.2.1
+
+# Utilities
+python-dotenv==1.0.1
+requests==2.31.0
+pydantic==2.6.4
+httpx==0.27.0
+```
+
+> **Install all:** `pip install -r requirements.txt`  
+> **After install verify:** `python -c "import crewai, composio_crewai, snowflake.connector, streamlit, fastapi; print('ALL OK')"`
+
+---
+
+## 19. The 5 Runbooks — Full Content (P1 seeds these into `RAW.RUNBOOKS`)
+
+These are the 5 runbook documents your team writes before Hour 4. Cortex Search indexes them. Ag2 searches them during investigation. Write them so they match your seeded scenarios.
+
+---
+
+### RB-001 — DB Connection Pool Exhaustion (`payment-service`)
+
+```
+Title: DB Connection Pool Exhaustion
+Service: payment-service
+
+SYMPTOM:
+  - error_rate increases >100% after deploy
+  - latency_ms increases >30% simultaneously
+  - Anomaly starts within 2-3 minutes of deploy
+
+ROOT CAUSE:
+  New query patterns introduced in deploy consume more database connections
+  than the pool allows. When pool fills, new requests queue then timeout.
+  This causes both latency spike (queuing) and error rate spike (timeouts).
+
+DIAGNOSIS STEPS:
+  1. Confirm deploy happened in last 5 minutes: SELECT * FROM RAW.DEPLOY_EVENTS ORDER BY timestamp DESC LIMIT 1
+  2. Check active DB connections: SELECT count(*) FROM pg_stat_activity WHERE datname = 'payment_db'
+  3. If active connections >= MAX_POOL_SIZE → pool exhaustion confirmed
+  4. Check commit message for keywords: "query", "database", "connection", "pool", "optimize"
+
+FIX OPTIONS:
+  Option A — ROLLBACK (Recommended, Friday/high-traffic): 
+    git revert <commit_sha>; deploy takes 3-5 min
+  Option B — SCALE POOL (If rollback not possible):
+    Increase MAX_POOL_SIZE from 50 to 100 in service config
+    Apply with: kubectl set env deployment/payment-service MAX_POOL_SIZE=100
+    Takes 8-12 min
+
+EXPECTED RECOVERY TIME: 3-5 min (rollback) or 8-12 min (pool scale)
+
+PAST OCCURRENCES: INC-012 (Feb 3, resolved in 22 min), INC-006 (Jan 10, resolved in 18 min)
+
+BLAST RADIUS: order-service (depends on payment for checkout), notification-service (payment events)
+```
+
+---
+
+### RB-002 — Memory Leak from Batch Processing (`order-service`)
+
+```
+Title: Memory Leak Detection — Batch Processing Loop
+Service: order-service
+
+SYMPTOM:
+  - latency_ms increases GRADUALLY over 2-4 hours (not instant spike)
+  - memory_usage climbs steadily, does not plateau
+  - error_rate increases only after memory exceeds 80%
+  - cpu_usage remains normal until memory critical
+
+ROOT CAUSE:
+  Objects allocated in batch processing loop not properly garbage collected.
+  Each batch run leaks N MB. Over hours, container hits memory limit.
+  Triggered by deploy that introduced new object allocations in order batch job.
+
+DIAGNOSIS STEPS:
+  1. Check pod memory trend: kubectl top pods -n order-service (watch over 5 min)
+  2. If memory climbing steadily → leak confirmed
+  3. Distinguish from connection pool: memory leak is GRADUAL, pool exhaustion is INSTANT
+  4. Check recent deploy for new object allocations or missing .close() / dispose() calls
+
+FIX OPTIONS:
+  Option A — RESTART PODS (immediate relief):
+    kubectl rollout restart deployment/order-service
+    Memory resets. Temporary fix — leak will recur until code fixed.
+    Takes 2-3 min
+  Option B — ROLLBACK + PATCH (permanent):
+    Rollback deploy; developers fix the allocation bug; re-deploy with fix
+    Takes 30-60 min depending on fix complexity
+
+EXPECTED RECOVERY TIME: 2-3 min (pod restart, temporary) or 60+ min (permanent fix)
+
+PAST OCCURRENCES: INC-019 (Jan 28, memory leak in batch invoice processor)
+
+BLAST RADIUS: Low — order-service is downstream, does not cascade to payment
+```
+
+---
+
+### RB-003 — Third-Party API Rate Limit (`notification-service`)
+
+```
+Title: Third-Party Notification API Rate Limit Exceeded
+Service: notification-service
+
+SYMPTOM:
+  - error_rate spikes DRAMATICALLY (>500%) almost instantly
+  - latency_ms remains NORMAL (requests are fast — just failing)
+  - No recent deploy required — can happen spontaneously at high traffic times
+  - Errors are consistent 429 (rate limit exceeded) from provider
+
+ROOT CAUSE:
+  External notification provider (email/SMS/push) has daily or per-minute rate limits.
+  When limit exceeded, all notification requests fail with 429.
+  Triggered by: high traffic spikes, marketing campaigns, or gradual daily limit accumulation.
+
+DIAGNOSIS STEPS:
+  1. Key signal: error_rate spike but latency_ms NORMAL → external failure, not internal resource
+  2. Check provider dashboard for rate limit status
+  3. Check logs for 429 response codes: kubectl logs -n notification-service | grep "429"
+  4. Check if any marketing campaign or bulk send was recently initiated
+
+FIX OPTIONS:
+  Option A — SWITCH TO BACKUP PROVIDER (Immediate):
+    Update NOTIFICATION_PROVIDER env var to backup provider
+    kubectl set env deployment/notification-service NOTIFICATION_PROVIDER=backup
+    Takes 2-3 min
+  Option B — IMPLEMENT QUEUE + RETRY (Longer term):
+    Push notifications to SQS queue; consumer respects rate limits with backoff
+    Takes hours to implement; not a live fix
+  Option C — REQUEST LIMIT INCREASE:
+    Contact provider for emergency limit increase. Takes 1-4 hours.
+
+EXPECTED RECOVERY TIME: 2-3 min (provider switch)
+
+PAST OCCURRENCES: INC-031 (Feb 14, Valentine's Day campaign overwhelmed SMS provider)
+
+BLAST RADIUS: None — notification-service is leaf node, no services depend on it
+```
+
+---
+
+### RB-004 — Auth Service Cache Cold Start (`auth-service`)
+
+```
+Title: Session Cache Cold Start After Deploy
+Service: auth-service
+
+SYMPTOM:
+  - latency_ms spikes 3-5x IMMEDIATELY after deploy
+  - error_rate increases slightly (authentication timeouts)
+  - SELF-HEALING: metrics return to normal within 10-15 minutes WITHOUT intervention
+  - Pattern: sharp spike → gradual recovery (not maintained spike)
+
+ROOT CAUSE:
+  Deploy invalidated Redis session cache. All active users must re-authenticate
+  simultaneously, causing thundering herd on auth service. Cache rebuilds
+  as users re-authenticate and new sessions are cached.
+  This is EXPECTED behavior for auth-service deploys — not a bug.
+
+DIAGNOSIS STEPS:
+  1. Check if anomaly is self-healing (metrics improving over last 5 min)
+  2. Check cache hit ratio: if dropped from >95% to <20% → cold start confirmed
+  3. Confirm auth-service was recently deployed (not other services)
+  4. Do NOT rollback — this resolves itself
+
+FIX ACTIONS:
+  DO NOT ROLLBACK — causes another cold start.
+  Option A — WAIT (recommended): 10-15 min, cache rebuilds automatically
+  Option B — PRE-WARM (for future deploys): 
+    Use gradual traffic shift (10% → 50% → 100%) before full cutover
+    Prevents thundering herd by allowing cache to warm incrementally
+
+EXPECTED RECOVERY TIME: 10-15 min (self-healing, no intervention)
+
+PAST OCCURRENCES: Every auth-service deploy. INC-009, INC-017, INC-024 — all self-healed.
+
+BLAST RADIUS: All services that call auth-service for token validation (order-service, payment-service)
+NOTE: Blast radius is temporary — once auth cache rebuilds, upstream services recover automatically
+```
+
+---
+
+### RB-005 — Disk Full from Debug Logging (`inventory-service`)
+
+```
+Title: Disk Full — Debug Logging Accidentally Enabled in Production
+Service: inventory-service
+
+SYMPTOM:
+  - error_rate → 100% (service completely unresponsive)
+  - latency_ms → infinite (requests never complete)
+  - No partial degradation — complete failure
+  - Typically happens 20-60 minutes after deploy, not immediately
+
+ROOT CAUSE:
+  Developer accidentally left LOG_LEVEL=DEBUG in production deploy config.
+  Debug logs generate 100-500x more log volume than INFO level.
+  /var/log fills completely; service cannot write logs, then cannot write anything, crashes.
+
+DIAGNOSIS STEPS:
+  1. kubectl exec -it <pod> -n inventory-service -- df -h
+  2. If /var/log or / filesystem >95% full → disk confirmed
+  3. Check recent commit for LOG_LEVEL changes in .env or config files
+  4. Check commit message for "debug", "verbose", "logging" keywords
+
+FIX OPTIONS:
+  Option A — IMMEDIATE (2-3 min):
+    kubectl exec -it <pod> -- truncate -s 0 /var/log/app/service.log
+    Then: kubectl set env deployment/inventory-service LOG_LEVEL=INFO
+    Then: kubectl rollout restart deployment/inventory-service
+  Option B — ROLLBACK (3-5 min):
+    Rollback deploy that introduced LOG_LEVEL=DEBUG
+    Cleaner fix, prevents recurrence until code fixed
+
+EXPECTED RECOVERY TIME: 2-3 min (log truncate + env fix)
+
+PAST OCCURRENCES: INC-003 (Dec 12, debug logging left on over weekend — 4 hour outage)
+
+BLAST RADIUS: payment-service (reads inventory for stock checks), order-service (checks inventory before order creation)
+```
+
+---
+
+## 20. CrewAI HTTP Server — How Snowflake Calls the Agents (P2 builds this)
+
+Snowflake's Stored Procedure cannot run Python directly. It makes an **HTTP POST request** to an external endpoint. P2 needs to expose the CrewAI crew as a FastAPI server running alongside the Streamlit app.
+
+### How It Works
+
+```
+Snowflake Task fires
+        │
+        ▼
+Snowflake Stored Procedure
+  → HTTP POST to http://<host>:8000/investigate
+  → Body: { "incident_id": "INC-047", "service": "payment-service",
+             "severity": "HIGH", "anomaly_id": "ANO-123",
+             "deploy_id": "DEP-abc123", "metrics": {...} }
+        │
+        ▼
+FastAPI server receives request
+  → Kicks off CrewAI Crew
+  → Returns 200 OK immediately (async — crew runs in background)
+        │
+        ▼
+CrewAI Crew runs agents (Ag1 → Ag2 → Ag5 → Ag3 → Ag4)
+  → Logs all steps to AI.DECISIONS
+  → Ag4 fires Composio actions
+  → Stores DNA in AI.INCIDENT_HISTORY
+        │
+        ▼
+Streamlit polls AI.DECISIONS every 3s → shows reasoning trace live
+```
+
+### `server.py` — FastAPI Entry Point (P2 owns this file)
+
+```python
+# server.py — Run with: uvicorn server:app --host 0.0.0.0 --port 8000
+
+from fastapi import FastAPI, BackgroundTasks
+from pydantic import BaseModel
+from crew import run_incident_crew   # your CrewAI crew function
+import uvicorn
+
+app = FastAPI(title="IncidentDNA Agent Server")
+
+class IncidentPayload(BaseModel):
+    incident_id: str
+    service: str
+    severity: str
+    anomaly_id: str
+    deploy_id: str
+    metrics: dict
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "IncidentDNA Agent Server"}
+
+@app.post("/investigate")
+def investigate(payload: IncidentPayload, background_tasks: BackgroundTasks):
+    """
+    Called by Snowflake Stored Procedure.
+    Returns 200 immediately. Crew runs as background task.
+    """
+    background_tasks.add_task(run_incident_crew, payload.dict())
+    return {
+        "status": "accepted",
+        "incident_id": payload.incident_id,
+        "message": "Investigation started. Check AI.DECISIONS for progress."
+    }
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+```
+
+### `crew.py` — CrewAI Crew Entry Point (P2 owns this file)
+
+```python
+# crew.py
+
+from crewai import Crew, Process
+from agents.manager import build_manager
+from agents.ag1_detector import build_ag1
+from agents.ag2_investigator import build_ag2
+from agents.ag3_fix_advisor import build_ag3
+from agents.ag4_action_agent import build_ag4
+from agents.ag5_validator import build_ag5
+from tasks import build_tasks
+import snowflake.connector
+import os
+
+def get_snowflake_conn():
+    return snowflake.connector.connect(
+        account=os.getenv("SNOWFLAKE_ACCOUNT"),
+        user=os.getenv("SNOWFLAKE_USER"),
+        password=os.getenv("SNOWFLAKE_PASSWORD"),
+        database=os.getenv("SNOWFLAKE_DATABASE"),
+        warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
+    )
+
+def run_incident_crew(payload: dict):
+    """
+    Entry point called by FastAPI background task.
+    Builds crew, runs all agents, handles exceptions.
+    """
+    conn = get_snowflake_conn()
+    incident_id = payload["incident_id"]
+
+    try:
+        # Build agents
+        ag1 = build_ag1(conn)
+        ag2 = build_ag2(conn)
+        ag3 = build_ag3(conn)
+        ag4 = build_ag4(conn)
+        ag5 = build_ag5(conn)
+        manager = build_manager(conn)
+
+        # Build tasks with payload context
+        tasks = build_tasks(payload, ag1, ag2, ag3, ag4, ag5)
+
+        # Run crew — hierarchical process, manager orchestrates
+        crew = Crew(
+            agents=[ag1, ag2, ag3, ag4, ag5],
+            tasks=tasks,
+            manager_agent=manager,
+            process=Process.hierarchical,
+            verbose=True,
+        )
+
+        result = crew.kickoff()
+        print(f"✅ Crew completed for {incident_id}: {result}")
+
+    except Exception as e:
+        print(f"❌ Crew failed for {incident_id}: {e}")
+        # Log failure to Snowflake so Streamlit can show error state
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO AI.DECISIONS (incident_id, agent_name, step, reasoning, confidence, timestamp)
+            VALUES (%s, 'SYSTEM', 'CREW_ERROR', %s, 0, CURRENT_TIMESTAMP())
+        """, (incident_id, str(e)))
+    finally:
+        conn.close()
+```
+
+### Snowflake Stored Procedure (P1 puts this in `06_stored_procedure.sql`)
+
+```sql
+CREATE OR REPLACE PROCEDURE AI.TRIGGER_CREWAI_INVESTIGATION(
+    P_INCIDENT_ID VARCHAR,
+    P_SERVICE VARCHAR,
+    P_SEVERITY VARCHAR,
+    P_ANOMALY_ID VARCHAR,
+    P_DEPLOY_ID VARCHAR
+)
+RETURNS VARCHAR
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.11'
+PACKAGES = ('snowflake-snowpark-python', 'requests')
+HANDLER = 'run'
+AS
+$$
+import requests
+import json
+import os
+
+def run(session, p_incident_id, p_service, p_severity, p_anomaly_id, p_deploy_id):
+    payload = {
+        "incident_id": p_incident_id,
+        "service": p_service,
+        "severity": p_severity,
+        "anomaly_id": p_anomaly_id,
+        "deploy_id": p_deploy_id,
+        "metrics": {}
+    }
+    
+    # Replace with your actual server URL (ngrok during hackathon, or deployed URL)
+    endpoint = "http://<YOUR_SERVER_URL>:8000/investigate"
+    
+    try:
+        response = requests.post(endpoint, json=payload, timeout=10)
+        return f"TRIGGERED: {response.json()}"
+    except Exception as e:
+        return f"ERROR: {str(e)}"
+$$;
+```
+
+> **Local dev / hackathon trick:** Use `ngrok http 8000` to expose your local FastAPI server with a public URL. Put the ngrok URL in the Snowflake procedure. Free tier is fine for a 24-hour hackathon.
+
+### Starting Both Servers Together
+
+```bash
+# Terminal 1 — CrewAI FastAPI server
+uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+
+# Terminal 2 — Streamlit dashboard
+streamlit run app/main.py
+
+# Terminal 3 — Composio trigger listener
+python trigger_listener.py
+
+# Terminal 4 — ngrok (expose CrewAI server to Snowflake)
+ngrok http 8000
+# Copy the https URL → paste into Snowflake stored procedure
+```
+
+---
+
 **Built by:** Prem Shah + Team at Llama Lounge × Snowflake Hackathon, 2026  
-**Stack:** Snowflake Cortex · CrewAI · Composio · Streamlit · Llama 3.1-70B · Python  
+**Stack:** Snowflake Cortex · CrewAI · Composio · Streamlit · Llama 3.1-70B · Python · FastAPI  
 
 *"First time is hard. Second time is instant. That's the DNA."* 🧬
