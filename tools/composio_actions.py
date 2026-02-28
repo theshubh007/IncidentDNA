@@ -247,3 +247,131 @@ def create_github_issue(
         return "SENT"
     except Exception as e:
         return _fallback_log(event_id, "GITHUB_ISSUE", key, payload, str(e))
+
+
+# ---------------------------------------------------------------------------
+# Threshold Engine — message variants
+# ---------------------------------------------------------------------------
+
+def post_slack_alert_auto_resolved(
+    event_id: str,
+    service: str,
+    severity: str,
+    root_cause: str,
+    blast_radius: list[str] | None = None,
+    fix_options: list[dict] | None = None,
+    confidence: float = 0.0,
+    mttr_seconds: int = 0,
+) -> str:
+    """
+    Post an AUTO-RESOLVED Slack alert. Used when the threshold engine decides AUTO_RESOLVE.
+    """
+    key = _idempotency_key("SLACK_AUTO_RESOLVED", event_id)
+    prev = _already_sent(key)
+    if prev:
+        return f"SKIPPED_DUPLICATE (previous: {prev})"
+
+    blast_str = ", ".join(blast_radius) if blast_radius else "None identified"
+    fix_desc = fix_options[0]["title"] if fix_options else "N/A"
+    fix_cmds = ", ".join(fix_options[0].get("commands", [])) if fix_options else "N/A"
+
+    message = (
+        f"\u2705 *AUTO-RESOLVED: {service}*\n"
+        f"*Root Cause:* {root_cause}\n"
+        f"*Fix Applied:* {fix_desc}\n"
+    )
+    if fix_cmds and fix_cmds != "N/A":
+        message += f"*Commands:* `{fix_cmds[:200]}`\n"
+    message += (
+        f"*Blast Radius:* {blast_str}\n"
+        f"*Confidence:* {confidence:.0%} | *MTTR:* {mttr_seconds}s\n"
+        f"*Status:* Resolved autonomously. No human intervention required.\n"
+        f"*Event ID:* `{event_id}`"
+    )
+
+    channel = os.getenv("SLACK_CHANNEL", "team-spartans").lstrip("#")
+    payload = {"channel": channel, "text": message}
+
+    _record_action(event_id, "SLACK_AUTO_RESOLVED", key, payload)
+    try:
+        _execute_with_retry("SLACK_SEND_MESSAGE", payload)
+        _update_status(key, "SENT")
+        return "SENT"
+    except Exception as e:
+        return _fallback_log(event_id, "SLACK_AUTO_RESOLVED", key, payload, str(e))
+
+
+def post_slack_alert_escalation(
+    event_id: str,
+    service: str,
+    severity: str,
+    root_cause: str,
+    blast_radius: list[str] | None = None,
+    fix_options: list[dict] | None = None,
+    urgency: str = "MEDIUM_CONFIDENCE",
+    incident_type: str = "PERFORMANCE",
+    confidence: float = 0.0,
+) -> str:
+    """
+    Post a HUMAN_ESCALATION Slack alert with urgency-band formatting.
+    """
+    key = _idempotency_key("SLACK_ESCALATION", event_id)
+    prev = _already_sent(key)
+    if prev:
+        return f"SKIPPED_DUPLICATE (previous: {prev})"
+
+    blast_str = ", ".join(blast_radius) if blast_radius else "None identified"
+
+    # Urgency-band formatting
+    if urgency == "IMMEDIATE":
+        emoji = "\U0001f6a8"
+        header = f"*{incident_type} INCIDENT \u2014 Human Review Required*"
+        status_line = f"\u26a0\ufe0f NO AUTO-ACTIONS TAKEN \u2014 awaiting human approval"
+    elif urgency in ("HIGH", "HIGH_CONFIDENCE"):
+        emoji = "\u26a0\ufe0f"
+        header = f"*INCIDENT DETECTED (High Confidence)*"
+        status_line = f"\u26a1 Recommended fix ready \u2014 awaiting human approval"
+    elif urgency == "MEDIUM_CONFIDENCE":
+        emoji = "\U0001f536"
+        header = f"*INCIDENT DETECTED (Investigating)*"
+        status_line = f"Multiple hypotheses \u2014 human triage needed"
+    else:
+        emoji = "\U0001f534"
+        header = f"*INCIDENT DETECTED (Low Confidence)*"
+        status_line = f"Root cause unclear \u2014 immediate human investigation required"
+
+    message = (
+        f"{emoji} *[{severity}]* {header}\n"
+        f"*Service:* {service}\n"
+        f"*Root Cause:* {root_cause}\n"
+        f"*Blast Radius:* {blast_str}\n"
+        f"*Confidence:* {confidence:.0%}\n"
+    )
+
+    # Include fix recommendation for high-confidence escalations
+    if fix_options and urgency in ("HIGH", "HIGH_CONFIDENCE", "IMMEDIATE"):
+        fix_title = fix_options[0].get("title", "N/A")
+        fix_risk = fix_options[0].get("risk_level", "MEDIUM")
+        message += f"*Recommended Fix:* {fix_title} (risk: {fix_risk})\n"
+
+    message += (
+        f"*Status:* {status_line}\n"
+        f"*Event ID:* `{event_id}`"
+    )
+
+    # Route security incidents to security channel if configured
+    if incident_type == "SECURITY":
+        channel = os.getenv("SLACK_SECURITY_CHANNEL", os.getenv("SLACK_CHANNEL", "team-spartans"))
+    else:
+        channel = os.getenv("SLACK_CHANNEL", "team-spartans")
+    channel = channel.lstrip("#")
+
+    payload = {"channel": channel, "text": message}
+
+    _record_action(event_id, "SLACK_ESCALATION", key, payload)
+    try:
+        _execute_with_retry("SLACK_SEND_MESSAGE", payload)
+        _update_status(key, "SENT")
+        return "SENT"
+    except Exception as e:
+        return _fallback_log(event_id, "SLACK_ESCALATION", key, payload, str(e))
