@@ -235,7 +235,7 @@ describe('Mock Data — Simulation Scenarios', () => {
 
     it('scenarios cover the required types', () => {
         const labels = SIMULATION_SCENARIOS.map(s => s.label);
-        expect(labels).toContain('Payment Error Spike');
+        expect(labels).toContain('LLM Gateway Error Spike');
         expect(labels).toContain('Latency Regression');
         expect(labels).toContain('DB Pool Exhaustion');
     });

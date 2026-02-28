@@ -178,7 +178,7 @@ describe('Integration — Simulation Flow', () => {
         await user.click(document.getElementById('simulate-event-btn'));
 
         await waitFor(() => {
-            expect(screen.getByText('Payment Error Spike')).toBeInTheDocument();
+            expect(screen.getByText('LLM Gateway Error Spike')).toBeInTheDocument();
             expect(screen.getByText('Latency Regression')).toBeInTheDocument();
             expect(screen.getByText('DB Pool Exhaustion')).toBeInTheDocument();
         });

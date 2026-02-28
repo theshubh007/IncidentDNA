@@ -76,17 +76,17 @@ describe('Services Page', () => {
 
     it('renders all service cards', () => {
         renderWithProviders(<ServicesPage />);
-        expect(screen.getByText('payment-service')).toBeInTheDocument();
+        expect(screen.getByText('llm-gateway')).toBeInTheDocument();
         expect(screen.getByText('api-gateway')).toBeInTheDocument();
-        expect(screen.getByText('user-service')).toBeInTheDocument();
-        expect(screen.getByText('notification-service')).toBeInTheDocument();
-        expect(screen.getByText('order-service')).toBeInTheDocument();
-        expect(screen.getByText('inventory-service')).toBeInTheDocument();
+        expect(screen.getByText('auth-service')).toBeInTheDocument();
+        expect(screen.getByText('alert-engine')).toBeInTheDocument();
+        expect(screen.getByText('threat-analyzer')).toBeInTheDocument();
+        expect(screen.getByText('model-registry')).toBeInTheDocument();
     });
 
     it('each service card has unique ID', () => {
         renderWithProviders(<ServicesPage />);
-        expect(document.getElementById('service-card-payment-service')).toBeInTheDocument();
+        expect(document.getElementById('service-card-llm-gateway')).toBeInTheDocument();
         expect(document.getElementById('service-card-api-gateway')).toBeInTheDocument();
     });
 

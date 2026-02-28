@@ -128,12 +128,13 @@ function LiveStepper({ steps }) {
     );
 }
 
-/* ── File Structure (from repo fileTree) ──────────────────────── */
+/* ── File Structure — visual tree ─────────────────────────────── */
 function FileStructure({ fileTree, repoName }) {
     if (!fileTree || fileTree.length === 0) return null;
 
     const dirs = fileTree.filter(f => f.type === 'dir');
     const files = fileTree.filter(f => f.type !== 'dir');
+    const all = [...dirs, ...files];
 
     const fmtSize = (bytes) => {
         if (!bytes || bytes === 0) return '';
@@ -142,53 +143,76 @@ function FileStructure({ fileTree, repoName }) {
         return `${(bytes / 1048576).toFixed(1)} MB`;
     };
 
-    const fileIcon = (name) => {
+    const fileColor = (name) => {
         const ext = name.split('.').pop()?.toLowerCase();
-        const colorMap = {
+        const map = {
             py: '#3572A5', js: '#f1e05a', jsx: '#f1e05a', ts: '#3178c6', tsx: '#3178c6',
             json: '#71717a', yml: '#cb171e', yaml: '#cb171e', md: '#083fa1',
             css: '#563d7c', html: '#e34c26', sh: '#89e051', sql: '#e38c00',
             env: '#71717a', txt: '#71717a', toml: '#9c4221', cfg: '#71717a',
+            ps1: '#012456', dockerfile: '#384d54', gitignore: '#f05033',
         };
-        return colorMap[ext] || '#71717a';
+        return map[ext] || '#71717a';
+    };
+
+    const connectorStyle = {
+        color: 'var(--text-tertiary)', opacity: 0.5, userSelect: 'none',
+        width: '18px', flexShrink: 0, textAlign: 'right',
     };
 
     return (
         <div className="card" id="blast-radius-panel" style={{ maxHeight: '420px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div className="card-header">
-                <span className="card-title">File Structure</span>
-                <span className="body-xs">{fileTree.length} items</span>
+                <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Code2 size={14} style={{ color: 'var(--color-accent)' }} />
+                    {repoName || 'File Structure'}
+                </span>
+                <span className="body-xs">{dirs.length} dirs, {files.length} files</span>
             </div>
-            <div style={{ overflow: 'auto', flex: 1, fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
-                {dirs.map(d => (
-                    <div key={d.name} style={{
-                        display: 'flex', alignItems: 'center', gap: '8px',
-                        padding: '5px 12px', borderBottom: '1px solid var(--border-primary)',
-                        transition: 'background 150ms', cursor: 'default',
-                    }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-sidebar-hover)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    >
-                        <ChevronRight size={12} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
-                        <Code2 size={13} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
-                        <span style={{ fontWeight: 600, color: 'var(--text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}/</span>
-                    </div>
-                ))}
-                {files.map(f => (
-                    <div key={f.name} style={{
-                        display: 'flex', alignItems: 'center', gap: '8px',
-                        padding: '5px 12px', borderBottom: '1px solid var(--border-primary)',
-                        transition: 'background 150ms', cursor: 'default',
-                    }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-sidebar-hover)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    >
-                        <span style={{ width: '12px', flexShrink: 0 }} />
-                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: fileIcon(f.name), flexShrink: 0 }} />
-                        <span style={{ color: 'var(--text-secondary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                        <span style={{ color: 'var(--text-tertiary)', fontSize: '10px', flexShrink: 0 }}>{fmtSize(f.size)}</span>
-                    </div>
-                ))}
+            <div style={{
+                overflow: 'auto', flex: 1, padding: '4px 0',
+                fontSize: '12px', fontFamily: 'var(--font-mono)', lineHeight: '1.7',
+            }}>
+                {all.map((item, idx) => {
+                    const isLast = idx === all.length - 1;
+                    const isDir = item.type === 'dir';
+                    const connector = isLast ? '\u2514\u2500\u2500' : '\u251C\u2500\u2500';
+
+                    return (
+                        <div key={item.name} style={{
+                            display: 'flex', alignItems: 'center',
+                            padding: '1px 14px', cursor: 'default',
+                            transition: 'background 120ms',
+                            borderRadius: '4px', margin: '0 4px',
+                        }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.06)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                            <span style={connectorStyle}>{connector}</span>
+                            {isDir ? (
+                                <>
+                                    <span style={{ margin: '0 6px', color: 'var(--color-accent)', fontSize: '13px', flexShrink: 0 }}>/</span>
+                                    <span style={{ fontWeight: 600, color: 'var(--text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {item.name}
+                                    </span>
+                                </>
+                            ) : (
+                                <>
+                                    <span style={{
+                                        width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0,
+                                        background: fileColor(item.name), margin: '0 6px',
+                                    }} />
+                                    <span style={{ color: 'var(--text-secondary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {item.name}
+                                    </span>
+                                    <span style={{ color: 'var(--text-tertiary)', fontSize: '10px', flexShrink: 0, marginLeft: '8px' }}>
+                                        {fmtSize(item.size)}
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );
@@ -371,7 +395,7 @@ export default function OverviewPage() {
             const [m, s, g, inc, repoData] = await Promise.all([
                 fetchMetrics(),
                 fetchStepperState('INC-001'),
-                fetchDependencyGraph('payment-service'),
+                fetchDependencyGraph('llm-gateway'),
                 fetchIncidents(),
                 fetchRepoInfo(),
             ]);
