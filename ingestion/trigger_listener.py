@@ -111,6 +111,107 @@ def trigger_incident_pipeline(anomaly: dict):
         print(f"[INGESTION] Pipeline error: {e}")
 
 
+def handle_ci_result(event_data: dict):
+    """
+    Handle GITHUB_WORKFLOW_RUN_EVENT from Composio.
+    Fires when any GitHub Actions workflow finishes (success or failure).
+    """
+    workflow_run = event_data.get("workflow_run", event_data)
+    conclusion  = workflow_run.get("conclusion", "")       # success | failure | cancelled
+    status      = workflow_run.get("status", "")           # completed | in_progress
+    workflow    = workflow_run.get("name", "CI")
+    head_sha    = workflow_run.get("head_sha", "unknown")[:7]
+    branch      = workflow_run.get("head_branch", "main")
+    repo        = (workflow_run.get("repository") or {}).get("name", "unknown-service")
+    html_url    = workflow_run.get("html_url", "")
+
+    print("\n" + "=" * 60)
+    print(f"[CI TRIGGER] Workflow '{workflow}' — {conclusion.upper() or status.upper()}")
+    print(f"  Repo: {repo} | Branch: {branch} | Commit: {head_sha}")
+    print(f"  URL: {html_url}")
+    print("=" * 60)
+
+    if status != "completed":
+        print(f"[CI TRIGGER] Workflow still running ({status}) — ignoring")
+        return
+
+    if conclusion == "success":
+        _handle_ci_success(repo, workflow, head_sha, branch, html_url)
+    elif conclusion in ("failure", "timed_out", "action_required"):
+        _handle_ci_failure(repo, workflow, head_sha, branch, html_url, conclusion)
+    else:
+        print(f"[CI TRIGGER] Conclusion '{conclusion}' — no action needed")
+
+
+def _handle_ci_success(repo: str, workflow: str, sha: str, branch: str, url: str):
+    """CI passed — check if there's an open incident for this repo and mark it confirmed."""
+    print(f"[CI SUCCESS] {repo}:{branch} — all checks passed")
+
+    # Look for a recent open incident for this service
+    try:
+        rows = run_query(
+            """SELECT event_id, root_cause, fix_applied
+               FROM AI.INCIDENT_HISTORY
+               WHERE service_name = %s
+               ORDER BY resolved_at DESC
+               LIMIT 1""",
+            (repo,),
+        )
+        if rows:
+            recent = rows[0]
+            print(f"[CI SUCCESS] Last incident: {recent['EVENT_ID']} — CI now confirms fix worked")
+
+            # Post a brief confirmation to Slack
+            try:
+                from tools.composio_actions import post_slack_ci_confirmed
+                post_slack_ci_confirmed(
+                    event_id=recent["EVENT_ID"],
+                    service=repo,
+                    workflow=workflow,
+                    branch=branch,
+                    sha=sha,
+                    url=url,
+                )
+            except Exception as e:
+                print(f"[CI SUCCESS] Slack confirmation failed: {e}")
+        else:
+            print(f"[CI SUCCESS] No recent incident found for {repo} — routine green build")
+    except Exception as e:
+        print(f"[CI SUCCESS] DB lookup failed: {e}")
+
+
+def _handle_ci_failure(repo: str, workflow: str, sha: str, branch: str, url: str, conclusion: str):
+    """CI failed — trigger the full incident pipeline with ci_failure anomaly type."""
+    print(f"[CI FAILURE] {repo}:{branch} — workflow '{workflow}' {conclusion}")
+    print(f"[CI FAILURE] Triggering incident pipeline...")
+
+    try:
+        from agents.manager import run_incident_crew
+        import uuid
+        event_payload = {
+            "event_id":    f"ci-{uuid.uuid4().hex[:8]}",
+            "service":     repo,
+            "anomaly_type": "ci_failure",
+            "severity":    "P2",
+            "details": {
+                "workflow":   workflow,
+                "conclusion": conclusion,
+                "branch":     branch,
+                "commit_sha": sha,
+                "run_url":    url,
+                # Force human escalation — never auto-resolve CI failures
+                "approved_override":        True,
+                "confidence_override":      0.85,
+                "risk_level_override":      "HIGH",
+                "blast_radius_override":    0,
+            },
+        }
+        result = run_incident_crew(event_payload)
+        print(f"[CI FAILURE] Pipeline done — slack={result.get('slack')} github={result.get('github')}")
+    except Exception as e:
+        print(f"[CI FAILURE] Pipeline error: {e}")
+
+
 def handle_github_push(event):
     """Handle GitHub push event from Composio trigger"""
     print("\n" + "=" * 60)
@@ -165,7 +266,13 @@ def handle_github_push(event):
 
 
 def start_composio_trigger():
-    """Register Composio GITHUB_COMMIT_EVENT trigger and listen."""
+    """
+    Register two Composio triggers and listen for both:
+      1. GITHUB_COMMIT_EVENT  — code push → detect anomalies → run pipeline
+      2. GITHUB_WORKFLOW_RUN_EVENT — CI result → confirm fix or re-investigate
+    Both listeners run in daemon threads so the process stays alive.
+    """
+    import threading
     from composio import Composio
 
     composio_key = os.getenv("COMPOSIO_API_KEY")
@@ -175,23 +282,40 @@ def start_composio_trigger():
 
     try:
         client = Composio(api_key=composio_key)
+        USER_ID = "pg-test-a6c32032-f3c5-43d2-9090-e16ffbd46f0d"
 
-        # Register trigger for GitHub push events
-        print("[TRIGGER] Registering GITHUB_COMMIT_EVENT trigger via Composio...")
-        listener = client.triggers.subscribe(
+        # ── Trigger 1: GitHub push (code deploy) ─────────────────────────────
+        print("[TRIGGER] Registering GITHUB_COMMIT_EVENT trigger...")
+        push_listener = client.triggers.subscribe(
             trigger_name="GITHUB_COMMIT_EVENT",
-            user_id="pg-test-a6c32032-f3c5-43d2-9090-e16ffbd46f0d",
+            user_id=USER_ID,
         )
 
-        print("[TRIGGER] Composio trigger registered. Listening for GitHub push events...")
-
-        @listener.callback
-        def on_trigger(event_data):
-            """Callback when GitHub push event fires"""
-            print(f"[TRIGGER] Event received: {type(event_data)}")
+        @push_listener.callback
+        def on_push(event_data):
+            print(f"[TRIGGER] Push event received")
             handle_github_push(event_data)
 
-        listener.listen()  # blocks
+        # ── Trigger 2: GitHub Actions CI result ──────────────────────────────
+        print("[TRIGGER] Registering GITHUB_WORKFLOW_RUN_EVENT trigger...")
+        ci_listener = client.triggers.subscribe(
+            trigger_name="GITHUB_WORKFLOW_RUN_EVENT",
+            user_id=USER_ID,
+        )
+
+        @ci_listener.callback
+        def on_ci(event_data):
+            print(f"[TRIGGER] CI workflow event received")
+            handle_ci_result(event_data)
+
+        print("[TRIGGER] Both triggers registered. Listening...")
+        print("[TRIGGER]   • GITHUB_COMMIT_EVENT       → anomaly detection pipeline")
+        print("[TRIGGER]   • GITHUB_WORKFLOW_RUN_EVENT → CI success/failure handler")
+
+        # Run push_listener in a daemon thread; block on ci_listener
+        t = threading.Thread(target=push_listener.listen, daemon=True)
+        t.start()
+        ci_listener.listen()  # blocks main thread
         return True
 
     except Exception as e:

@@ -375,3 +375,90 @@ def post_slack_alert_escalation(
         return "SENT"
     except Exception as e:
         return _fallback_log(event_id, "SLACK_ESCALATION", key, payload, str(e))
+
+
+# ---------------------------------------------------------------------------
+# CI Feedback Loop — success confirmation + failure re-alert
+# ---------------------------------------------------------------------------
+
+def post_slack_ci_confirmed(
+    event_id: str,
+    service: str,
+    workflow: str,
+    branch: str,
+    sha: str,
+    url: str,
+) -> str:
+    """
+    Post a CI-confirmed Slack message when GitHub Actions passes after an incident fix.
+    Uses a unique idempotency key per (event_id + sha) so it only fires once per commit.
+    """
+    key = _idempotency_key(f"SLACK_CI_CONFIRMED:{sha}", event_id)
+    prev = _already_sent(key)
+    if prev:
+        return f"SKIPPED_DUPLICATE (previous: {prev})"
+
+    message = (
+        f"\u2705 *CI CONFIRMED: Fix verified for {service}*\n"
+        f"*Workflow:* {workflow}\n"
+        f"*Branch:* {branch} | *Commit:* `{sha}`\n"
+        f"*Status:* All checks passed — incident fix confirmed by CI\n"
+        f"*Run:* {url}\n"
+        f"*Event ID:* `{event_id}`"
+    )
+
+    channel = os.getenv("SLACK_CHANNEL", "team-spartans").lstrip("#")
+    payload = {"channel": channel, "text": message}
+
+    _record_action(event_id, "SLACK_CI_CONFIRMED", key, payload)
+    try:
+        _execute_with_retry("SLACK_SEND_MESSAGE", payload)
+        _update_status(key, "SENT")
+        return "SENT"
+    except Exception as e:
+        return _fallback_log(event_id, "SLACK_CI_CONFIRMED", key, payload, str(e))
+
+
+def post_slack_ci_failure(
+    event_id: str,
+    service: str,
+    workflow: str,
+    branch: str,
+    sha: str,
+    conclusion: str,
+    url: str,
+) -> str:
+    """
+    Post a CI-failure Slack alert when GitHub Actions fails.
+    Called directly from trigger_listener — the full pipeline also fires separately.
+    """
+    key = _idempotency_key("SLACK_CI_FAILURE", event_id)
+    prev = _already_sent(key)
+    if prev:
+        return f"SKIPPED_DUPLICATE (previous: {prev})"
+
+    conclusion_emoji = {
+        "failure":        "\u274c",
+        "timed_out":      "\u23f0",
+        "action_required": "\u26a0\ufe0f",
+    }.get(conclusion, "\u274c")
+
+    message = (
+        f"{conclusion_emoji} *CI FAILURE: {service}*\n"
+        f"*Workflow:* {workflow} — `{conclusion.upper()}`\n"
+        f"*Branch:* {branch} | *Commit:* `{sha}`\n"
+        f"*Action:* IncidentDNA is investigating — agents running now\n"
+        f"*Run:* {url}\n"
+        f"*Event ID:* `{event_id}`"
+    )
+
+    channel = os.getenv("SLACK_CHANNEL", "team-spartans").lstrip("#")
+    payload = {"channel": channel, "text": message}
+
+    _record_action(event_id, "SLACK_CI_FAILURE", key, payload)
+    try:
+        _execute_with_retry("SLACK_SEND_MESSAGE", payload)
+        _update_status(key, "SENT")
+        return "SENT"
+    except Exception as e:
+        return _fallback_log(event_id, "SLACK_CI_FAILURE", key, payload, str(e))

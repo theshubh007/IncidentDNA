@@ -140,6 +140,10 @@ ANOMALY_TO_INCIDENT_TYPE = {
     "service_down":             "AVAILABILITY",
     "gradual_degradation":      "TREND",
     "slow_burn":                "TREND",
+    # CI/CD feedback loop
+    "ci_failure":               "PERFORMANCE",
+    "test_failure":             "PERFORMANCE",
+    "build_failure":            "PERFORMANCE",
 }
 
 
@@ -318,6 +322,24 @@ def run_incident_crew(event: dict) -> dict:
 
     # Track MTTR phase timestamps
     ts_detected = datetime.now(timezone.utc)
+
+    # ── CI Failure: send immediate Slack alert before agents run (agents take ~90s) ──
+    details = event.get("details", {}) if isinstance(event.get("details"), dict) else {}
+    if event.get("anomaly_type") in ("ci_failure", "test_failure", "build_failure"):
+        try:
+            from tools.composio_actions import post_slack_ci_failure
+            post_slack_ci_failure(
+                event_id   = event["event_id"],
+                service    = event["service"],
+                workflow   = details.get("workflow", "CI"),
+                branch     = details.get("branch", "main"),
+                sha        = details.get("commit_sha", "unknown"),
+                conclusion = details.get("conclusion", "failure"),
+                url        = details.get("run_url", ""),
+            )
+            print(f"[MANAGER] Immediate CI failure alert sent to Slack")
+        except Exception as e:
+            print(f"[MANAGER] Immediate CI alert failed (non-fatal): {e}")
 
     # ── Phase 1: Detect ──────────────────────────────────────────────────────
     print("[MANAGER] Phase 1: Detection")
