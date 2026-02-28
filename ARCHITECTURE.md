@@ -19,10 +19,10 @@
 | Utils | snowflake_conn.py, snowflake_llm.py | ✅ Done |
 | React Dashboard | App.jsx, api.js, mockData.js | ✅ Done (mock data) |
 | Snowflake SQL | 01_schema.sql, 02_seed_data.sql, 03_dynamic_tables.sql | ❌ Missing |
-| Trigger Listener | trigger_listener.py | ❌ Missing |
+| Trigger Listener | trigger_listener.py | ✅ Done |
 | Backend API | api.py | ❌ Missing |
 
-_Last updated: 2026-02-27 21:22 by scripts/gen_architecture.py_
+_Last updated: 2026-02-27 22:09 by scripts/gen_architecture.py_
 <!-- STATUS_END -->
 
 ---
@@ -309,23 +309,23 @@ IncidentDNA/
 ├── snowflake/                  ❌ NOT CREATED (P1 task)
 │   ├── 01_schema.sql                 ❌  DDL: RAW.*, AI.*, ANALYTICS.*
 │   ├── 02_seed_data.sql              ❌  Runbooks, past incidents, sample metrics
-│   └── 03_dynamic_tables.sql         ❌  ANALYTICS.METRIC_DEVIATIONS (z-score)
+│   ├── 03_dynamic_tables.sql         ❌  ANALYTICS.METRIC_DEVIATIONS (z-score)
 │
-├── ingestion/                  ❌ NOT CREATED (P3 task)
-│   └── trigger_listener.py         ❌  Composio WebSocket → run_incident_crew()
+├── ingestion/                  ✅
+│   └── trigger_listener.py         ✅  Composio WebSocket → run_incident_crew()
 │
 ├── dashboard/                  ✅ (mock data)
 │   └── src/
 │       ├── pages/              8 pages: Overview, Incidents, Releases...
 │       ├── api.js                      Toggle VITE_USE_LIVE_DATA for real data
-│       └── mockData.js                 Offline demo data
+│       ├── mockData.js                 Offline demo data
 │
 ├── CLAUDE.md                          ✅  Claude Code auto-loads this every session
 ├── ARCHITECTURE.md                    ✅  This file — auto-updated by hooks
-├── scripts/gen_architecture.py        ✅  Auto-updates this file
+├── gen_architecture.py                ✅  Auto-updates this file
 ├── requirements.txt                   ✅
 ├── test_agent.py                      ✅  python test_agent.py [snowflake|agents]
-└── .env                               ✅  Credentials
+├── .env                               ✅  Credentials
 ```
 <!-- FILES_END -->
 
