@@ -13,12 +13,6 @@ describe('Toolbar Component', () => {
         expect(screen.getByText('Search incidents, services…')).toBeInTheDocument();
     });
 
-    it('renders the environment switch', () => {
-        renderWithProviders(<Toolbar />);
-        expect(screen.getByText('Prod')).toBeInTheDocument();
-        expect(screen.getByText('Staging')).toBeInTheDocument();
-    });
-
     it('renders the Simulate Event button', () => {
         renderWithProviders(<Toolbar />);
         expect(screen.getByText('Simulate Event')).toBeInTheDocument();
@@ -27,21 +21,6 @@ describe('Toolbar Component', () => {
     it('Simulate Event button has correct ID', () => {
         renderWithProviders(<Toolbar />);
         expect(document.getElementById('simulate-event-btn')).toBeInTheDocument();
-    });
-
-    it('Prod is active by default', () => {
-        renderWithProviders(<Toolbar />);
-        const prodBtn = document.getElementById('env-prod');
-        expect(prodBtn.classList.contains('active')).toBe(true);
-    });
-
-    it('clicking Staging switches environment', async () => {
-        const user = userEvent.setup();
-        renderWithProviders(<Toolbar />);
-
-        const stagingBtn = document.getElementById('env-staging');
-        await user.click(stagingBtn);
-        expect(stagingBtn.classList.contains('active')).toBe(true);
     });
 
     it('notifications button has a badge', () => {

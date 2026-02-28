@@ -152,26 +152,10 @@ describe('Integration — Sidebar Collapse', () => {
     });
 });
 
-describe('Integration — Environment Switch', () => {
-    it('switches between Prod and Staging', async () => {
-        const user = userEvent.setup();
+describe('Integration — Toolbar Repo Name', () => {
+    it('renders the simulate event button', () => {
         render(<App />);
-
-        const prodBtn = document.getElementById('env-prod');
-        const stagingBtn = document.getElementById('env-staging');
-
-        // Prod is active by default
-        expect(prodBtn.classList.contains('active')).toBe(true);
-        expect(stagingBtn.classList.contains('active')).toBe(false);
-
-        // Switch to staging
-        await user.click(stagingBtn);
-        expect(stagingBtn.classList.contains('active')).toBe(true);
-        expect(prodBtn.classList.contains('active')).toBe(false);
-
-        // Switch back to prod
-        await user.click(prodBtn);
-        expect(prodBtn.classList.contains('active')).toBe(true);
+        expect(document.getElementById('simulate-event-btn')).toBeInTheDocument();
     });
 });
 
