@@ -14,47 +14,60 @@
 
 ---
 
+## Architecture Context
+No Snowflake Tasks, Streams, or Stored Procedures. Everything runs locally (Python). Your job is:
+1. Create the schema + tables
+2. Seed realistic test data
+3. Set up the dynamic table for anomaly detection
+4. Set up Cortex Search for runbook retrieval
+
+P2's agents query your tables directly. P3's dashboard reads `AI.DECISIONS` and `AI.ACTIONS` directly from Snowflake.
+
+---
+
 ## Your Deliverables (run in this exact order)
 
-### Step 1 — `snowflake/01_schema_ddl.sql`
+### Step 1 — `snowflake/01_schema.sql`
 Create all schemas and tables.
 
 ```sql
--- Schemas
-CREATE SCHEMA IF NOT EXISTS RAW;
-CREATE SCHEMA IF NOT EXISTS AI;
-CREATE SCHEMA IF NOT EXISTS ANALYTICS;
+-- ── SCHEMAS ─────────────────────────────────────────────────────────
+CREATE DATABASE IF NOT EXISTS INCIDENTDNA;
 
--- RAW layer
-CREATE TABLE IF NOT EXISTS RAW.DEPLOYS (
-  deploy_id      VARCHAR PRIMARY KEY,
+CREATE SCHEMA IF NOT EXISTS INCIDENTDNA.RAW;
+CREATE SCHEMA IF NOT EXISTS INCIDENTDNA.AI;
+CREATE SCHEMA IF NOT EXISTS INCIDENTDNA.ANALYTICS;
+
+-- ── RAW LAYER ───────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS INCIDENTDNA.RAW.DEPLOY_EVENTS (
+  deploy_id      VARCHAR        PRIMARY KEY,
   service        VARCHAR,
   version        VARCHAR,
-  deployed_at    TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+  deployed_at    TIMESTAMP_NTZ  DEFAULT CURRENT_TIMESTAMP(),
   deployed_by    VARCHAR,
   diff_summary   VARCHAR
 );
 
-CREATE TABLE IF NOT EXISTS RAW.METRICS (
-  metric_id      VARCHAR DEFAULT UUID_STRING() PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS INCIDENTDNA.RAW.METRICS (
+  metric_id      VARCHAR        DEFAULT UUID_STRING() PRIMARY KEY,
   service        VARCHAR,
-  metric_name    VARCHAR,       -- error_rate, latency_p99, cpu_pct, memory_pct
+  metric_name    VARCHAR,   -- error_rate | latency_p99 | cpu_pct | memory_pct
   metric_value   FLOAT,
-  recorded_at    TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+  recorded_at    TIMESTAMP_NTZ  DEFAULT CURRENT_TIMESTAMP()
 );
 
-CREATE TABLE IF NOT EXISTS RAW.RUNBOOKS (
-  runbook_id     VARCHAR DEFAULT UUID_STRING() PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS INCIDENTDNA.RAW.RUNBOOKS (
+  runbook_id     VARCHAR        DEFAULT UUID_STRING() PRIMARY KEY,
   title          VARCHAR,
   symptom        VARCHAR,
   root_cause     VARCHAR,
   fix_steps      VARCHAR,
   service        VARCHAR,
-  created_at     TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+  created_at     TIMESTAMP_NTZ  DEFAULT CURRENT_TIMESTAMP()
 );
 
-CREATE TABLE IF NOT EXISTS RAW.PAST_INCIDENTS (
-  incident_id    VARCHAR DEFAULT UUID_STRING() PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS INCIDENTDNA.RAW.PAST_INCIDENTS (
+  incident_id    VARCHAR        DEFAULT UUID_STRING() PRIMARY KEY,
   title          VARCHAR,
   root_cause     VARCHAR,
   fix_applied    VARCHAR,
@@ -63,67 +76,58 @@ CREATE TABLE IF NOT EXISTS RAW.PAST_INCIDENTS (
   mttr_minutes   INTEGER
 );
 
-CREATE TABLE IF NOT EXISTS RAW.SERVICE_DEPENDENCIES (
+CREATE TABLE IF NOT EXISTS INCIDENTDNA.RAW.SERVICE_DEPENDENCIES (
   service        VARCHAR,
   depends_on     VARCHAR
 );
 
--- AI layer
-CREATE TABLE IF NOT EXISTS AI.ANOMALY_EVENTS (
-  event_id       VARCHAR DEFAULT UUID_STRING() PRIMARY KEY,
+-- ── AI LAYER ────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS INCIDENTDNA.AI.ANOMALY_EVENTS (
+  event_id       VARCHAR        DEFAULT UUID_STRING() PRIMARY KEY,
   deploy_id      VARCHAR,
   service        VARCHAR,
   anomaly_type   VARCHAR,
-  severity       VARCHAR,       -- P1 / P2 / P3
+  severity       VARCHAR,   -- P1 | P2 | P3
   details        VARIANT,
-  detected_at    TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
-  status         VARCHAR DEFAULT 'NEW'  -- NEW / PROCESSING / RESOLVED
+  detected_at    TIMESTAMP_NTZ  DEFAULT CURRENT_TIMESTAMP(),
+  status         VARCHAR        DEFAULT 'NEW'  -- NEW | PROCESSING | RESOLVED
 );
 
-CREATE TABLE IF NOT EXISTS AI.AGENT_RUNS (
-  run_id         VARCHAR DEFAULT UUID_STRING() PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS INCIDENTDNA.AI.DECISIONS (
+  decision_id    VARCHAR        DEFAULT UUID_STRING() PRIMARY KEY,
   event_id       VARCHAR,
-  agent_name     VARCHAR,
+  agent_name     VARCHAR,   -- ag1_detector | ag2_investigator | ag5_validator | manager
   input          VARIANT,
   output         VARIANT,
-  started_at     TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
-  finished_at    TIMESTAMP_NTZ,
-  status         VARCHAR        -- SUCCESS / FAILED / DEBATING
+  reasoning      VARCHAR,
+  confidence     FLOAT,
+  created_at     TIMESTAMP_NTZ  DEFAULT CURRENT_TIMESTAMP()
 );
 
-CREATE TABLE IF NOT EXISTS AI.ACTIONS (
-  action_id      VARCHAR DEFAULT UUID_STRING() PRIMARY KEY,
-  event_id       VARCHAR,
-  action_type    VARCHAR,       -- SLACK_ALERT / GITHUB_ISSUE
-  idempotency_key VARCHAR UNIQUE,
-  payload        VARIANT,
-  executed_at    TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
-  status         VARCHAR        -- SENT / SKIPPED_DUPLICATE / FAILED
+CREATE TABLE IF NOT EXISTS INCIDENTDNA.AI.ACTIONS (
+  action_id         VARCHAR        DEFAULT UUID_STRING() PRIMARY KEY,
+  event_id          VARCHAR,
+  action_type       VARCHAR,   -- SLACK_ALERT | GITHUB_ISSUE
+  idempotency_key   VARCHAR        UNIQUE,
+  payload           VARIANT,
+  status            VARCHAR,   -- SENT | SKIPPED_DUPLICATE | FAILED
+  executed_at       TIMESTAMP_NTZ  DEFAULT CURRENT_TIMESTAMP()
 );
 
--- ANALYTICS layer
-CREATE TABLE IF NOT EXISTS ANALYTICS.INCIDENT_DNA (
-  dna_id         VARCHAR DEFAULT UUID_STRING() PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS INCIDENTDNA.AI.INCIDENT_HISTORY (
+  history_id     VARCHAR        DEFAULT UUID_STRING() PRIMARY KEY,
   event_id       VARCHAR,
   service        VARCHAR,
   root_cause     VARCHAR,
   fix_applied    VARCHAR,
-  mttr_minutes   INTEGER,
+  severity       VARCHAR,
   confidence     FLOAT,
-  resolved_at    TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
-);
-
-CREATE TABLE IF NOT EXISTS ANALYTICS.MTTR_METRICS (
-  period_date    DATE,
-  avg_mttr       FLOAT,
-  total_incidents INTEGER,
-  p1_count       INTEGER,
-  p2_count       INTEGER,
-  p3_count       INTEGER
+  mttr_minutes   INTEGER,
+  resolved_at    TIMESTAMP_NTZ  DEFAULT CURRENT_TIMESTAMP()
 );
 ```
 
-**Verify:** Run `SHOW TABLES IN SCHEMA RAW;` — should show 5 tables.
+**Verify:** `SHOW TABLES IN SCHEMA INCIDENTDNA.RAW;` → 5 tables. `SHOW TABLES IN SCHEMA INCIDENTDNA.AI;` → 4 tables.
 
 ---
 
@@ -131,91 +135,135 @@ CREATE TABLE IF NOT EXISTS ANALYTICS.MTTR_METRICS (
 Seed realistic test data so agents have something to work with from day 1.
 
 ```sql
--- Seed a deploy event
-INSERT INTO RAW.DEPLOYS VALUES (
+USE DATABASE INCIDENTDNA;
+USE SCHEMA RAW;
+
+-- ── DEPLOY EVENT ────────────────────────────────────────────────────
+INSERT INTO RAW.DEPLOY_EVENTS VALUES (
   'deploy_001', 'payment-service', 'v2.4.1',
   CURRENT_TIMESTAMP(), 'github-actions', 'Added retry logic to DB pool'
 );
 
--- Seed metrics showing an incident (error rate spike)
-INSERT INTO RAW.METRICS (service, metric_name, metric_value) VALUES
-  ('payment-service', 'error_rate',   0.02),
-  ('payment-service', 'error_rate',   0.18),   -- spike after deploy
-  ('payment-service', 'latency_p99',  210),
-  ('payment-service', 'latency_p99',  1850),   -- spike
-  ('payment-service', 'cpu_pct',      45),
-  ('payment-service', 'cpu_pct',      48),
-  ('api-gateway',     'error_rate',   0.01),
-  ('api-gateway',     'latency_p99',  95);
+-- ── METRICS — normal baseline then spike ────────────────────────────
+INSERT INTO RAW.METRICS (service, metric_name, metric_value, recorded_at) VALUES
+  ('payment-service', 'error_rate',  0.02, DATEADD('minute', -60, CURRENT_TIMESTAMP())),
+  ('payment-service', 'error_rate',  0.02, DATEADD('minute', -30, CURRENT_TIMESTAMP())),
+  ('payment-service', 'error_rate',  0.18, DATEADD('minute',  -5, CURRENT_TIMESTAMP())),  -- spike
+  ('payment-service', 'latency_p99', 210,  DATEADD('minute', -60, CURRENT_TIMESTAMP())),
+  ('payment-service', 'latency_p99', 220,  DATEADD('minute', -30, CURRENT_TIMESTAMP())),
+  ('payment-service', 'latency_p99', 1850, DATEADD('minute',  -5, CURRENT_TIMESTAMP())), -- spike
+  ('payment-service', 'cpu_pct',     45,   DATEADD('minute', -60, CURRENT_TIMESTAMP())),
+  ('payment-service', 'cpu_pct',     48,   DATEADD('minute',  -5, CURRENT_TIMESTAMP())),
+  ('api-gateway',     'error_rate',  0.01, DATEADD('minute',  -5, CURRENT_TIMESTAMP())),
+  ('api-gateway',     'latency_p99', 95,   DATEADD('minute',  -5, CURRENT_TIMESTAMP()));
 
--- Seed 5 runbooks
+-- ── RUNBOOKS (5) ────────────────────────────────────────────────────
 INSERT INTO RAW.RUNBOOKS (title, symptom, root_cause, fix_steps, service) VALUES
-('DB Pool Exhaustion',
- 'High latency + DB connection errors',
- 'Connection pool maxed out — too many concurrent requests or connection leak',
- '1. Check pool size: SHOW PARAMETERS LIKE connection_pool_size;\n2. Kill idle connections\n3. Scale pool: SET max_pool_size=50;\n4. Restart service',
- 'payment-service'),
+  ('DB Pool Exhaustion',
+   'High latency and DB connection errors after deploy',
+   'Connection pool maxed out — too many concurrent connections or connection leak after code change',
+   '1. Check pool: SHOW PARAMETERS LIKE connection_pool_size\n2. Kill idle connections\n3. Increase pool: SET max_pool_size=50\n4. Rolling restart service',
+   'payment-service'),
 
-('Memory Leak — Node.js',
- 'Memory grows unbounded, OOM kills',
- 'Event listeners not removed or large objects held in closure',
- '1. Heap dump: node --inspect\n2. Find leak with Chrome DevTools\n3. Fix listener cleanup\n4. Rolling restart',
- 'api-gateway'),
+  ('Memory Leak — Node.js Service',
+   'Memory grows unbounded, OOM kills, service restarts',
+   'Event listeners not removed or large objects held in closure in hot code path',
+   '1. Heap dump via node --inspect\n2. Identify leak in Chrome DevTools Memory tab\n3. Remove uncleaned listeners\n4. Rolling restart',
+   'api-gateway'),
 
-('Rate Limit Breach',
- '429 errors from downstream APIs',
- 'Burst traffic exceeded upstream rate limits',
- '1. Check rate limit headers\n2. Add exponential backoff\n3. Enable request queue\n4. Contact upstream for limit increase',
- 'notification-service'),
+  ('Rate Limit Breach — External API',
+   '429 Too Many Requests from downstream service',
+   'Burst traffic exceeded upstream rate limits without backoff',
+   '1. Check rate limit headers in logs\n2. Add exponential backoff with jitter\n3. Enable request queue\n4. Contact upstream for temporary limit increase',
+   'notification-service'),
 
-('Cache Cold Start',
- 'Latency spike after deploy — returns to normal after ~5 min',
- 'Redis cache flushed during deploy; cold start fills cache slowly',
- '1. Confirm cache miss rate in Redis INFO\n2. Pre-warm cache with synthetic requests\n3. Use cache-aside pattern next deploy',
- 'product-service'),
+  ('Cache Cold Start After Deploy',
+   'Latency spike immediately after deploy — returns to baseline after ~5 min',
+   'Redis cache flushed during deploy rollout; cold start fills cache slowly',
+   '1. Confirm cache miss rate via Redis INFO stats\n2. Pre-warm with synthetic read requests\n3. Use cache-aside pattern for next deploy',
+   'product-service'),
 
-('Disk Full — Log Accumulation',
- 'Service crashes, disk I/O errors in logs',
- 'Log rotation not configured; logs filled disk',
- '1. df -h to confirm\n2. logrotate -f /etc/logrotate.conf\n3. Delete old .gz logs\n4. Set max log size in config',
- 'worker-service');
+  ('Disk Full — Log Accumulation',
+   'Service crashes with I/O errors, disk usage at 100%',
+   'Log rotation not configured; uncompressed logs accumulated over time',
+   '1. df -h to confirm disk usage\n2. logrotate -f /etc/logrotate.conf\n3. Delete old .gz archives\n4. Set maxSize in logger config',
+   'worker-service');
 
--- Seed past incidents (training data for AI_SIMILARITY)
+-- ── PAST INCIDENTS (10 for AI_SIMILARITY training) ──────────────────
 INSERT INTO RAW.PAST_INCIDENTS (title, root_cause, fix_applied, service, resolved_at, mttr_minutes) VALUES
-('Payment DB pool exhausted Dec-2024',
- 'DB connection pool hit max 20 during Black Friday traffic',
- 'Increased pool to 50, added connection timeout of 30s',
- 'payment-service', '2024-12-01 14:30:00', 22),
+  ('Payment DB pool exhausted Dec-2024',
+   'DB connection pool hit max 20 during Black Friday traffic surge',
+   'Increased pool size to 50, added 30s connection timeout',
+   'payment-service', '2024-12-01 14:30:00', 22),
 
-('API Gateway OOM Jan-2025',
- 'Memory leak in request logging middleware',
- 'Removed console.log in hot path, added log sampling',
- 'api-gateway', '2025-01-15 09:15:00', 34),
+  ('API Gateway OOM Jan-2025',
+   'Memory leak in request logging middleware — console.log in hot path',
+   'Removed console.log from hot path, added log sampling at 1%',
+   'api-gateway', '2025-01-15 09:15:00', 34),
 
-('Notification rate-limited Feb-2025',
- 'SendGrid 429 during promotional blast',
- 'Added token bucket limiter, retry queue with backoff',
- 'notification-service', '2025-02-10 16:00:00', 18);
+  ('Notification rate-limited Feb-2025',
+   'SendGrid 429 during promotional email blast — no backoff configured',
+   'Added token bucket limiter, retry queue with exponential backoff',
+   'notification-service', '2025-02-10 16:00:00', 18),
 
--- Seed service dependencies
+  ('Worker disk full Mar-2025',
+   'Log rotation disabled after config migration — 3 weeks of unrotated logs',
+   'Cleared old logs, re-enabled logrotate with 7-day retention',
+   'worker-service', '2025-03-05 02:30:00', 45),
+
+  ('Product service cache thrash Apr-2025',
+   'Cache key collision after schema change caused constant eviction',
+   'Added service version prefix to all cache keys',
+   'product-service', '2025-04-12 11:00:00', 27),
+
+  ('Payment timeout cascade May-2025',
+   'Upstream payment gateway latency caused connection pool starvation',
+   'Added circuit breaker with 5s timeout, fallback to queue',
+   'payment-service', '2025-05-20 18:45:00', 31),
+
+  ('API gateway CPU spike Jun-2025',
+   'Regex in auth middleware catastrophic backtrack on malformed tokens',
+   'Replaced regex with fixed-length token validation',
+   'api-gateway', '2025-06-03 08:20:00', 19),
+
+  ('Notification duplicate sends Jul-2025',
+   'Missing idempotency check allowed retry storm to send 5x duplicates',
+   'Added SHA256 idempotency key per notification event',
+   'notification-service', '2025-07-14 14:00:00', 38),
+
+  ('Product service cold start Aug-2025',
+   'Blue-green deploy flushed Redis during traffic cutover',
+   'Pre-warm cache before traffic switch using canary requests',
+   'product-service', '2025-08-22 09:30:00', 15),
+
+  ('Payment DB index bloat Sep-2025',
+   'Unvacuumed dead tuples inflated query plans — 8x slower',
+   'VACUUM ANALYZE on transactions table, added autovacuum tuning',
+   'payment-service', '2025-09-10 13:15:00', 52);
+
+-- ── SERVICE DEPENDENCIES ─────────────────────────────────────────────
 INSERT INTO RAW.SERVICE_DEPENDENCIES VALUES
   ('api-gateway',          'payment-service'),
   ('api-gateway',          'product-service'),
+  ('api-gateway',          'notification-service'),
   ('payment-service',      'postgres-primary'),
   ('notification-service', 'sendgrid-api'),
-  ('worker-service',       'redis-cache');
+  ('worker-service',       'redis-cache'),
+  ('product-service',      'redis-cache');
 ```
 
-**Verify:** `SELECT COUNT(*) FROM RAW.RUNBOOKS;` → 5 rows.
+**Verify:** `SELECT COUNT(*) FROM RAW.RUNBOOKS;` → 5. `SELECT COUNT(*) FROM RAW.PAST_INCIDENTS;` → 10.
 
 ---
 
 ### Step 3 — `snowflake/03_dynamic_tables.sql`
-Auto-compute anomalies whenever new metrics land.
+Dynamic table for anomaly detection + Cortex Search for runbooks.
 
 ```sql
--- Baseline per service/metric (rolling 1-hour average before deploy)
-CREATE OR REPLACE DYNAMIC TABLE AI.METRIC_BASELINES
+USE DATABASE INCIDENTDNA;
+
+-- ── BASELINE: rolling 1-hour average per service/metric ─────────────
+CREATE OR REPLACE DYNAMIC TABLE ANALYTICS.METRIC_BASELINES
   TARGET_LAG = '1 minute'
   WAREHOUSE = COMPUTE_WH
 AS
@@ -229,62 +277,34 @@ FROM RAW.METRICS
 WHERE recorded_at >= DATEADD('hour', -1, CURRENT_TIMESTAMP())
 GROUP BY service, metric_name;
 
--- Deviation detection: flag when current value is 2+ std devs from baseline
-CREATE OR REPLACE DYNAMIC TABLE AI.METRIC_DEVIATIONS
+-- ── DEVIATIONS: flag when current value is 2+ std devs above baseline
+CREATE OR REPLACE DYNAMIC TABLE ANALYTICS.METRIC_DEVIATIONS
   TARGET_LAG = '30 seconds'
   WAREHOUSE = COMPUTE_WH
 AS
 SELECT
   m.service,
   m.metric_name,
-  m.metric_value                                              AS current_value,
+  m.metric_value                                                              AS current_value,
   b.baseline_avg,
   b.baseline_std,
-  ROUND((m.metric_value - b.baseline_avg) / NULLIF(b.baseline_std, 0), 2) AS z_score,
+  ROUND(
+    (m.metric_value - b.baseline_avg) / NULLIF(b.baseline_std, 0), 2
+  )                                                                           AS z_score,
   m.recorded_at,
   CASE
     WHEN ABS((m.metric_value - b.baseline_avg) / NULLIF(b.baseline_std, 0)) > 3 THEN 'P1'
     WHEN ABS((m.metric_value - b.baseline_avg) / NULLIF(b.baseline_std, 0)) > 2 THEN 'P2'
     ELSE 'P3'
-  END AS severity
+  END                                                                         AS severity
 FROM RAW.METRICS m
-JOIN AI.METRIC_BASELINES b
+JOIN ANALYTICS.METRIC_BASELINES b
   ON m.service = b.service AND m.metric_name = b.metric_name
 WHERE m.recorded_at >= DATEADD('minute', -5, CURRENT_TIMESTAMP())
   AND ABS((m.metric_value - b.baseline_avg) / NULLIF(b.baseline_std, 0)) >= 2;
 
--- Classified anomaly results using Cortex AI_CLASSIFY
-CREATE OR REPLACE DYNAMIC TABLE AI.ANOMALY_RESULTS
-  TARGET_LAG = '1 minute'
-  WAREHOUSE = COMPUTE_WH
-AS
-SELECT
-  d.service,
-  d.metric_name,
-  d.current_value,
-  d.severity,
-  d.z_score,
-  d.recorded_at,
-  SNOWFLAKE.CORTEX.CLASSIFY_TEXT(
-    'Anomaly: service=' || d.service ||
-    ' metric=' || d.metric_name ||
-    ' value=' || d.current_value::VARCHAR ||
-    ' z_score=' || d.z_score::VARCHAR,
-    ['database_issue', 'memory_issue', 'network_issue', 'rate_limit', 'cpu_spike', 'unknown']
-  ):label::VARCHAR AS anomaly_class
-FROM AI.METRIC_DEVIATIONS d;
-```
-
-**Verify:** `SELECT * FROM AI.ANOMALY_RESULTS LIMIT 5;` — shows classified anomalies.
-
----
-
-### Step 4 — `snowflake/04_cortex_search.sql`
-Vector search over runbooks for the Investigator agent.
-
-```sql
--- Cortex Search Service for runbook retrieval
-CREATE OR REPLACE CORTEX SEARCH SERVICE RAW.RUNBOOK_SEARCH
+-- ── CORTEX SEARCH: vector search over runbooks ──────────────────────
+CREATE OR REPLACE CORTEX SEARCH SERVICE INCIDENTDNA.RAW.RUNBOOK_SEARCH
   ON title, symptom, root_cause, fix_steps
   WAREHOUSE = COMPUTE_WH
   TARGET_LAG = '1 hour'
@@ -300,149 +320,68 @@ AS (
   FROM RAW.RUNBOOKS
 );
 
--- Test it
+-- Test the dynamic table (run after seeding metrics)
+SELECT * FROM ANALYTICS.METRIC_DEVIATIONS;
+
+-- Test Cortex Search
 SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
-  'RUNBOOK_SEARCH',
+  'INCIDENTDNA.RAW.RUNBOOK_SEARCH',
   'database connection timeout errors high latency',
   3
 );
 ```
 
-**Verify:** The `SEARCH_PREVIEW` call returns 3 relevant runbook results.
+**Verify:**
+- `SELECT * FROM ANALYTICS.METRIC_DEVIATIONS;` → shows z-score rows for payment-service
+- Cortex Search preview returns 3 runbook results
 
 ---
 
-### Step 5 — `snowflake/05_stream_task.sql`
-Stream on new anomalies → trigger Python agent pipeline.
+### Step 4 — `.env.example` (root)
 
-```sql
--- Stream on new anomaly events
-CREATE OR REPLACE STREAM AI.ANOMALY_STREAM
-  ON TABLE AI.ANOMALY_EVENTS
-  APPEND_ONLY = TRUE;
-
--- Task: fires every 30s when new rows arrive in stream
-CREATE OR REPLACE TASK AI.TRIGGER_AGENT_PIPELINE
-  WAREHOUSE = COMPUTE_WH
-  SCHEDULE = '1 minute'
-  WHEN SYSTEM$STREAM_HAS_DATA('AI.ANOMALY_STREAM')
-AS
-CALL AI.RUN_INCIDENT_PIPELINE(
-  (SELECT ARRAY_AGG(event_id) FROM AI.ANOMALY_STREAM WHERE METADATA$ACTION = 'INSERT')
-);
-
--- Enable the task
-ALTER TASK AI.TRIGGER_AGENT_PIPELINE RESUME;
-```
-
-**Verify:** `SHOW TASKS IN SCHEMA AI;` → task shows as `started`.
-
----
-
-### Step 6 — `snowflake/06_stored_procedure.sql`
-Stored proc that calls P2's FastAPI endpoint when an anomaly is detected.
-
-```sql
--- Stored procedure: calls the CrewAI agent API
-CREATE OR REPLACE PROCEDURE AI.RUN_INCIDENT_PIPELINE(event_ids ARRAY)
-RETURNS VARCHAR
-LANGUAGE PYTHON
-RUNTIME_VERSION = '3.10'
-PACKAGES = ('snowflake-snowpark-python', 'requests')
-HANDLER = 'run_pipeline'
-AS $$
-import requests
-import json
-
-def run_pipeline(session, event_ids):
-    # P2 will provide this URL after deploying their FastAPI server
-    # Replace with actual URL when P2 deploys
-    API_URL = "http://localhost:8000/run-pipeline"
-
-    results = []
-    for event_id in event_ids:
-        # Fetch event details from Snowflake
-        row = session.sql(f"""
-            SELECT event_id, service, anomaly_type, severity, details
-            FROM AI.ANOMALY_EVENTS
-            WHERE event_id = '{event_id}'
-        """).collect()
-
-        if not row:
-            continue
-
-        payload = {
-            "event_id":    row[0]["EVENT_ID"],
-            "service":     row[0]["SERVICE"],
-            "anomaly_type": row[0]["ANOMALY_TYPE"],
-            "severity":    row[0]["SEVERITY"],
-            "details":     row[0]["DETAILS"]
-        }
-
-        try:
-            resp = requests.post(API_URL, json=payload, timeout=300)
-            results.append(f"{event_id}: {resp.status_code}")
-        except Exception as e:
-            results.append(f"{event_id}: ERROR - {str(e)}")
-
-    return json.dumps(results)
-$$;
-
--- Test call (use a real event_id after seeding anomaly events)
--- CALL AI.RUN_INCIDENT_PIPELINE(ARRAY_CONSTRUCT('test-event-001'));
-```
-
----
-
-### Step 7 — `.env.example` (root of repo)
-Create this file at the project root so P2 and P3 can copy it:
-
-```
-# ── SNOWFLAKE (P1 fills these) ──────────────────────────────────────
+```env
+# ── SNOWFLAKE (P1 fills these) ───────────────────────────────────────
 SNOWFLAKE_ACCOUNT=sfsehol-llama_lounge_hackathon_sudhag
 SNOWFLAKE_USER=USER
 SNOWFLAKE_PASSWORD=sn0wf@ll
 SNOWFLAKE_DATABASE=INCIDENTDNA
-SNOWFLAKE_SCHEMA=AI
 SNOWFLAKE_WAREHOUSE=COMPUTE_WH
 SNOWFLAKE_ROLE=ACCOUNTADMIN
 
-# ── COMPOSIO (P3 fills these) ────────────────────────────────────────
+# ── COMPOSIO (P2 fills these) ────────────────────────────────────────
 COMPOSIO_API_KEY=your_composio_api_key_here
 GITHUB_REPO=your-org/your-repo
 SLACK_CHANNEL=#incidents
-
-# ── API SERVER (P2 fills these) ──────────────────────────────────────
-API_HOST=0.0.0.0
-API_PORT=8000
 ```
 
 ---
 
-## Integration Outputs (What P2 + P3 Need From You)
-
-When you finish, post in team chat:
+## Integration Outputs (Post in team chat when done)
 
 ```
-✅ P1 Done. Here's what you need:
+✅ P1 Done. Tables ready:
 
-Tables ready:
-  - RAW.DEPLOYS, RAW.METRICS, RAW.RUNBOOKS, RAW.PAST_INCIDENTS, RAW.SERVICE_DEPENDENCIES
-  - AI.ANOMALY_EVENTS, AI.AGENT_RUNS, AI.ACTIONS
-  - ANALYTICS.INCIDENT_DNA, ANALYTICS.MTTR_METRICS
+RAW schema:
+  RAW.DEPLOY_EVENTS   ← trigger_listener.py inserts here after every commit
+  RAW.METRICS         ← trigger_listener.py injects spike rows here
+  RAW.RUNBOOKS        ← 5 runbooks seeded
+  RAW.PAST_INCIDENTS  ← 10 past incidents seeded
+  RAW.SERVICE_DEPENDENCIES
 
-Dynamic Tables (auto-refreshing):
-  - AI.METRIC_BASELINES → baseline per service
-  - AI.METRIC_DEVIATIONS → z-score flagged rows
-  - AI.ANOMALY_RESULTS → classified anomaly type
+AI schema:
+  AI.ANOMALY_EVENTS   ← trigger_listener.py writes detected anomalies here
+  AI.DECISIONS        ← P2 agents write reasoning steps here (P3 dashboard reads this)
+  AI.ACTIONS          ← P2 idempotency layer writes here (P3 dashboard reads this)
+  AI.INCIDENT_HISTORY ← P2 manager writes final resolved incident here
 
-Cortex Search: RAW.RUNBOOK_SEARCH (use SNOWFLAKE.CORTEX.SEARCH_PREVIEW)
-Stream: AI.ANOMALY_STREAM (fires when new rows in ANOMALY_EVENTS)
-Task: AI.TRIGGER_AGENT_PIPELINE (calls stored proc every 1 min)
-Stored Proc: AI.RUN_INCIDENT_PIPELINE(event_ids ARRAY) → calls P2's API
+ANALYTICS schema:
+  ANALYTICS.METRIC_DEVIATIONS  ← auto-refreshes every 30s (P3 trigger_listener reads this)
+  ANALYTICS.METRIC_BASELINES   ← auto-refreshes every 1min
 
-.env.example is at repo root — copy it to .env and fill your keys.
-Snowflake connection: account=sfsehol-llama_lounge_hackathon_sudhag user=USER pass=sn0wf@ll
+Cortex Search: INCIDENTDNA.RAW.RUNBOOK_SEARCH
+  Use: SNOWFLAKE.CORTEX.SEARCH_PREVIEW('INCIDENTDNA.RAW.RUNBOOK_SEARCH', query, limit)
+
+.env.example at repo root — copy to .env and fill your keys.
 ```
 
 ---
@@ -450,30 +389,24 @@ Snowflake connection: account=sfsehol-llama_lounge_hackathon_sudhag user=USER pa
 ## Merge Instructions
 
 ```bash
-# Work on your own branch
 git checkout -b feature/snowflake-layer
 
-# Only commit files in snowflake/ and .env.example
 git add snowflake/ .env.example
-git commit -m "feat: snowflake data layer — schemas, seed data, dynamic tables, cortex search, stream/task, stored proc"
+git commit -m "feat: snowflake schema, seed data, dynamic tables, cortex search"
 
-# When P2 and P3 are ready to integrate
 git checkout main
-git merge feature/snowflake-layer   # clean merge — no conflicts possible
+git merge feature/snowflake-layer   # zero conflicts guaranteed
 ```
-
-> **No conflicts guaranteed**: You only touch `snowflake/` and `.env.example`. P2 owns `agents/` + `tools/` + `api.py`. P3 owns `app/` + `utils/` + `trigger_listener.py`.
 
 ---
 
 ## Checklist
 
-- [ ] `snowflake/01_schema_ddl.sql` — all 10 tables created
-- [ ] `snowflake/02_seed_data.sql` — 5 runbooks + 3 past incidents + metrics seeded
-- [ ] `snowflake/03_dynamic_tables.sql` — 3 dynamic tables auto-refreshing
-- [ ] `snowflake/04_cortex_search.sql` — RUNBOOK_SEARCH service live
-- [ ] `snowflake/05_stream_task.sql` — stream + task enabled and running
-- [ ] `snowflake/06_stored_procedure.sql` — stored proc created (update API_URL when P2 deploys)
-- [ ] `.env.example` — created at repo root
+- [ ] `snowflake/01_schema.sql` — all schemas + 9 tables created
+- [ ] `snowflake/02_seed_data.sql` — 5 runbooks + 10 past incidents + metrics + deps seeded
+- [ ] `snowflake/03_dynamic_tables.sql` — `ANALYTICS.METRIC_DEVIATIONS` refreshing + Cortex Search live
+- [ ] `.env.example` created at repo root
+- [ ] `SELECT * FROM ANALYTICS.METRIC_DEVIATIONS;` returns rows with z_score
+- [ ] Cortex Search preview returns relevant runbooks
 - [ ] Posted integration outputs in team chat
 - [ ] Merged `feature/snowflake-layer` into `main`
