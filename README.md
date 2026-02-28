@@ -51,7 +51,7 @@ agents/manager.py               ← Orchestrates the pipeline
     └── Ag5 Validator           → Approve or challenge (max 2 debate rounds)
         ↓
 tools/composio_actions.py
-    ├── post_slack_alert()      → Slack #all-shubh
+    ├── post_slack_alert()      → Slack #team-spartans
     └── create_github_issue()   → theshubh007/IncidentDNA
         ↓
 AI.INCIDENT_HISTORY             ← Stored in Snowflake
@@ -76,7 +76,7 @@ SNOWFLAKE_CORTEX_ENABLED=true
 GROQ_API_KEY=<fallback LLM — free at console.groq.com>
 COMPOSIO_API_KEY=<your key>
 GITHUB_REPO=<owner/repo>
-SLACK_CHANNEL=all-shubh
+SLACK_CHANNEL=team-spartans
 ```
 
 ---
@@ -118,7 +118,7 @@ test_agent.py   python test_agent.py [snowflake|agents]
 |------|-------|
 | LLM | claude-sonnet-4-5 via Snowflake Cortex |
 | GitHub issues → | [theshubh007/IncidentDNA](https://github.com/theshubh007/IncidentDNA) |
-| Slack alerts → | `#all-shubh` |
+| Slack alerts → | `#team-spartans` |
 | Composio user | `pg-test-a6c32032-f3c5-43d2-9090-e16ffbd46f0d` |
 
 > See [ARCHITECTURE.md](ARCHITECTURE.md) for full diagrams.

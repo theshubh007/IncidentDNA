@@ -421,8 +421,8 @@ Return ONLY JSON:
         run_dml(
             """INSERT INTO AI.INCIDENT_HISTORY
                    (event_id, service_name, root_cause, fix_applied, confidence,
-                    mttr_minutes, detected_at, investigated_at, alerted_at, resolved_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    mttr_minutes, resolved_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
             (
                 event["event_id"],
                 event["service"],
@@ -430,9 +430,6 @@ Return ONLY JSON:
                 fix,
                 investigation["confidence"],
                 mttr_minutes,
-                ts_detected.strftime("%Y-%m-%d %H:%M:%S"),
-                ts_investigated.strftime("%Y-%m-%d %H:%M:%S"),
-                ts_alerted.strftime("%Y-%m-%d %H:%M:%S"),
                 ts_resolved.strftime("%Y-%m-%d %H:%M:%S"),
             ),
         )

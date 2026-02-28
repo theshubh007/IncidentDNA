@@ -64,10 +64,18 @@ def _update_status(key: str, status: str) -> None:
 
 
 def _already_sent(key: str) -> str | None:
+    """Returns the status only if SENT (to skip). FAILED/FALLBACK entries are deleted so we retry."""
     rows = run_query(
         "SELECT status FROM AI.ACTIONS WHERE idempotency_key = %s", (key,)
     )
-    return rows[0]["STATUS"] if rows else None
+    if not rows:
+        return None
+    status = rows[0]["STATUS"]
+    if status == "SENT":
+        return status
+    # For FAILED / FALLBACK_LOGGED / PENDING — delete and allow a fresh attempt
+    run_dml("DELETE FROM AI.ACTIONS WHERE idempotency_key = %s", (key,))
+    return None
 
 
 def _execute_with_retry(action_name: str, payload: dict) -> None:
@@ -149,7 +157,7 @@ def post_slack_alert(
         f"_Autonomous response in progress..._"
     )
 
-    channel = os.getenv("SLACK_CHANNEL", "all-shubh").lstrip("#")  # strip '#' if present
+    channel = os.getenv("SLACK_CHANNEL", "team-spartans").lstrip("#")  # strip '#' if present
     payload = {"channel": channel, "text": message}
 
     _record_action(event_id, "SLACK_ALERT", key, payload)
