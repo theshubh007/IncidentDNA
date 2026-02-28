@@ -18,11 +18,11 @@
 | Tools | query_snowflake.py, search_runbooks.py, find_similar_incidents.py, ... | ✅ Done |
 | Utils | snowflake_conn.py, snowflake_llm.py | ✅ Done |
 | React Dashboard | App.jsx, api.js, mockData.js | ✅ Done (mock data) |
-| Snowflake SQL | 01_schema.sql, 02_seed_data.sql, 03_dynamic_tables.sql | ❌ Missing |
+| Snowflake SQL | 01_schema.sql, 02_seed_data.sql, 03_dynamic_tables.sql | ✅ Done |
 | Trigger Listener | trigger_listener.py | ✅ Done |
 | Backend API | api.py | ❌ Missing |
 
-_Last updated: 2026-02-27 22:09 by scripts/gen_architecture.py_
+_Last updated: 2026-02-27 23:11 by scripts/gen_architecture.py_
 <!-- STATUS_END -->
 
 ---
@@ -306,10 +306,10 @@ IncidentDNA/
 │   ├── snowflake_conn.py               get_connection(), run_query(), run_dml()
 │   ├── snowflake_llm.py                SnowflakeCortexLLM wrapper (BaseChatModel)
 │
-├── snowflake/                  ❌ NOT CREATED (P1 task)
-│   ├── 01_schema.sql                 ❌  DDL: RAW.*, AI.*, ANALYTICS.*
-│   ├── 02_seed_data.sql              ❌  Runbooks, past incidents, sample metrics
-│   ├── 03_dynamic_tables.sql         ❌  ANALYTICS.METRIC_DEVIATIONS (z-score)
+├── snowflake/                  ✅
+│   ├── 01_schema.sql                 ✅  DDL: RAW.*, AI.*, ANALYTICS.*
+│   ├── 02_seed_data.sql              ✅  Runbooks, past incidents, sample metrics
+│   ├── 03_dynamic_tables.sql         ✅  ANALYTICS.METRIC_DEVIATIONS (z-score)
 │
 ├── ingestion/                  ✅
 │   └── trigger_listener.py         ✅  Composio WebSocket → run_incident_crew()
