@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.snowflake_conn import run_query, run_dml
+from tools.demo_utils import DEMO_MODE, inject_anomalous_metrics
 
 load_dotenv()
 
@@ -138,6 +139,10 @@ def handle_github_push(event):
     # Step 2: Inject synthetic spike
     print(f"\n[STEP 2] Injecting synthetic metric spike")
     inject_synthetic_spike(repo_name)
+
+    # Step 2b: DEMO_MODE — inject additional anomalous metrics via demo_utils
+    if DEMO_MODE:
+        inject_anomalous_metrics(repo_name)
 
     # Step 3: Wait for dynamic table refresh
     print(f"\n[STEP 3] Waiting 35s for METRIC_DEVIATIONS dynamic table refresh...")
