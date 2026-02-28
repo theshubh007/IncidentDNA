@@ -1,72 +1,40 @@
+"""Snowflake connection utilities for IncidentDNA"""
 import os
-import threading
 import snowflake.connector
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Thread-local connection pool
-_local = threading.local()
-_lock = threading.Lock()
-
-
 def get_connection():
-    """Get a thread-local Snowflake connection (reused within same thread)."""
-    if not hasattr(_local, 'conn') or _local.conn is None or _local.conn.is_closed():
-        _local.conn = snowflake.connector.connect(
-            account=os.getenv("SNOWFLAKE_ACCOUNT"),
-            user=os.getenv("SNOWFLAKE_USER"),
-            password=os.getenv("SNOWFLAKE_PASSWORD"),
-            database=os.getenv("SNOWFLAKE_DATABASE", "INCIDENTDNA"),
-            warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
-            role=os.getenv("SNOWFLAKE_ROLE", "ACCOUNTADMIN"),
-        )
-    return _local.conn
-
-
-def get_new_connection():
-    """Get a fresh Snowflake connection (not pooled)."""
+    """Get Snowflake connection with credentials from .env"""
     return snowflake.connector.connect(
         account=os.getenv("SNOWFLAKE_ACCOUNT"),
         user=os.getenv("SNOWFLAKE_USER"),
         password=os.getenv("SNOWFLAKE_PASSWORD"),
         database=os.getenv("SNOWFLAKE_DATABASE", "INCIDENTDNA"),
+        schema=os.getenv("SNOWFLAKE_SCHEMA", "AI"),
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
         role=os.getenv("SNOWFLAKE_ROLE", "ACCOUNTADMIN"),
     )
 
-
 def run_query(sql: str, params: tuple = None) -> list[dict]:
-    """Run a SELECT and return rows as list of dicts."""
+    """Execute SELECT query and return results as list of dicts"""
     conn = get_connection()
-    cur = None
+    cur = conn.cursor(snowflake.connector.DictCursor)
     try:
-        cur = conn.cursor(snowflake.connector.DictCursor)
         cur.execute(sql, params or ())
         return cur.fetchall()
     finally:
-        if cur:
-            cur.close()
+        cur.close()
+        conn.close()
 
-
-def run_dml(sql: str, params: tuple = None) -> None:
-    """Run an INSERT / UPDATE / DELETE and commit."""
+def run_dml(sql: str, params: tuple = None):
+    """Execute INSERT/UPDATE/DELETE and commit"""
     conn = get_connection()
-    cur = None
+    cur = conn.cursor()
     try:
-        cur = conn.cursor()
         cur.execute(sql, params or ())
         conn.commit()
     finally:
-        if cur:
-            cur.close()
-
-
-def close_connection() -> None:
-    """Close the thread-local connection if it exists."""
-    if hasattr(_local, 'conn') and _local.conn is not None:
-        try:
-            _local.conn.close()
-        except Exception:
-            pass
-        _local.conn = None
+        cur.close()
+        conn.close()

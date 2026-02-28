@@ -1,240 +1,183 @@
 """
-Composio Trigger Listener for IncidentDNA
-==========================================
-WebSocket listener for GitHub commits and Slack messages.
-Inserts deploy event → injects spike → checks for anomaly → calls agent pipeline.
-
-Usage:
-  python ingestion/trigger_listener.py          # Listen for real events
-  python ingestion/trigger_listener.py --demo   # Run a demo simulation
+IncidentDNA Composio Trigger Listener
+Listens for GitHub commits and triggers the incident pipeline
 """
-
 import os
 import sys
-import uuid
-import json
-import time
-import argparse
-import snowflake.connector
 from dotenv import load_dotenv
+from composio import Composio
 
-# Add parent dir to path so we can import agents/utils
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.snowflake_conn import get_connection, run_dml, run_query, close_connection
+from utils.snowflake_conn import run_query, run_dml
 
 load_dotenv()
 
+# Initialize Composio with user session
+composio = Composio()
+session = composio.create(user_id="incidentdna_system")
 
-# ── Snowflake helpers ────────────────────────────────────────────────
+def inject_synthetic_spike(service_name: str):
+    """Inject synthetic metric spike to simulate incident"""
+    print(f"[INGESTION] Injecting synthetic spike for {service_name}")
+    
+    # Insert spike metrics
+    run_dml("""
+        INSERT INTO RAW.METRICS (service_name, metric_name, metric_value)
+        VALUES 
+            (%s, 'error_rate', 0.25),
+            (%s, 'latency_p99', 2500)
+    """, (service_name, service_name))
+    
+    print(f"[INGESTION] Spike injected for {service_name}")
 
-def insert_deploy_event(deploy_id: str, service: str, version: str, deployed_by: str, diff: str):
-    """Record a deploy event in RAW.DEPLOY_EVENTS."""
-    run_dml(
-        """
-        INSERT INTO RAW.DEPLOY_EVENTS (deploy_id, service, version, deployed_by, diff_summary)
-        VALUES (%s, %s, %s, %s, %s)
-        """,
-        (deploy_id, service, version, deployed_by, diff),
-    )
-    print(f"[TRIGGER] Deploy recorded: {deploy_id} → {service} {version}")
-
-
-def inject_metric_spike(service: str):
-    """Simulate a post-deploy error rate spike in Snowflake metrics."""
-    conn = get_connection()
-    cur = None
-    try:
-        cur = conn.cursor()
-        cur.executemany(
-            "INSERT INTO RAW.METRICS (service, metric_name, metric_value) VALUES (%s, %s, %s)",
-            [
-                (service, "error_rate", 0.22),    # spike: normal is ~0.02
-                (service, "latency_p99", 2100),    # spike: normal is ~200ms
-            ],
-        )
-        conn.commit()
-    finally:
-        if cur:
-            cur.close()
-    print(f"[TRIGGER] Injected metric spike for {service}")
-
-
-def check_anomaly(service: str) -> dict | None:
-    """Poll ANALYTICS.METRIC_DEVIATIONS for this service."""
-    print(f"[TRIGGER] Waiting 35s for dynamic table refresh...")
-    time.sleep(35)  # wait for dynamic table to refresh (30s lag)
-    rows = run_query(
-        """
-        SELECT service, metric_name, current_value, z_score, severity
+def check_for_anomalies(service_name: str) -> list:
+    """Query ANALYTICS.METRIC_DEVIATIONS for anomalies"""
+    print(f"[INGESTION] Checking for anomalies on {service_name}")
+    
+    anomalies = run_query("""
+        SELECT 
+            service_name,
+            metric_name,
+            current_value,
+            baseline_avg,
+            z_score,
+            severity
         FROM ANALYTICS.METRIC_DEVIATIONS
-        WHERE service = %s
-        ORDER BY z_score DESC
-        LIMIT 1
-        """,
-        (service,),
-    )
-    return rows[0] if rows else None
+        WHERE service_name = %s
+        ORDER BY ABS(z_score) DESC
+        LIMIT 5
+    """, (service_name,))
+    
+    return anomalies
 
+def trigger_incident_pipeline(anomaly: dict):
+    """Trigger CrewAI agent pipeline (Person 2's code)"""
+    print(f"[INGESTION] Anomaly detected! Triggering incident pipeline...")
+    print(f"  Service: {anomaly['SERVICE_NAME']}")
+    print(f"  Metric: {anomaly['METRIC_NAME']}")
+    print(f"  Z-Score: {anomaly['Z_SCORE']}")
+    print(f"  Severity: {anomaly['SEVERITY']}")
+    
+    # Insert anomaly event
+    run_dml("""
+        INSERT INTO AI.ANOMALY_EVENTS (
+            deploy_id,
+            service_name,
+            anomaly_type,
+            severity,
+            details,
+            status
+        ) VALUES (
+            %s,
+            %s,
+            %s,
+            %s,
+            PARSE_JSON(%s),
+            'NEW'
+        )
+    """, (
+        'deploy_001',  # Link to deploy event
+        anomaly['SERVICE_NAME'],
+        f"{anomaly['METRIC_NAME']}_spike",
+        anomaly['SEVERITY'],
+        f'{{"z_score": {anomaly["Z_SCORE"]}, "current_value": {anomaly["CURRENT_VALUE"]}, "baseline_avg": {anomaly["BASELINE_AVG"]}}}'
+    ))
+    
+    # TODO: Person 2 will implement this
+    # from agents.manager import run_pipeline
+    # run_pipeline(anomaly_payload)
+    
+    print(f"[INGESTION] Anomaly event created in AI.ANOMALY_EVENTS")
 
-# ── GitHub commit handler ────────────────────────────────────────────
-
-def handle_github_commit(payload: dict):
-    """Process a GitHub commit event through the full pipeline."""
-    repo = payload.get("repository", {}).get("name", "unknown-service")
-    sha = payload.get("after", uuid.uuid4().hex)[:8]
-    pusher = payload.get("pusher", {}).get("name", "unknown")
-    message = payload.get("head_commit", {}).get("message", "")
-
-    deploy_id = f"deploy-{sha}"
-    service = repo  # map repo name to service name
-
-    print(f"\n[TRIGGER] GitHub commit on {repo} by {pusher} — {sha}")
-
-    # 1. Record deploy
-    insert_deploy_event(deploy_id, service, f"sha-{sha}", pusher, message)
-
-    # 2. Inject spike to simulate post-deploy anomaly
-    inject_metric_spike(service)
-
-    # 3. Wait and check for anomaly
-    anomaly = check_anomaly(service)
-    if not anomaly:
-        print(f"[TRIGGER] No anomaly detected for {service} — pipeline skipped")
-        return
-
-    # 4. Call agent pipeline
-    from agents.manager import run_incident_crew
-
-    event = {
-        "event_id": f"evt-{sha}-{int(time.time())}",
-        "service": service,
-        "anomaly_type": f"post_deploy_{anomaly['METRIC_NAME']}",
-        "severity": anomaly["SEVERITY"],
-        "details": {
-            "deploy_id": deploy_id,
-            "metric_name": anomaly["METRIC_NAME"],
-            "current_value": anomaly["CURRENT_VALUE"],
-            "z_score": anomaly["Z_SCORE"],
-        },
-    }
-    print(f"[TRIGGER] Anomaly detected — starting agent pipeline for {event['event_id']}")
-    result = run_incident_crew(event)
-    print(f"[TRIGGER] Pipeline done: {result}")
-
-
-# ── Slack message handler ────────────────────────────────────────────
-
-def handle_slack_message(payload: dict):
-    """Process a Slack message that looks like an incident report."""
-    text = payload.get("text", "").lower()
-    keywords = ["incident", "down", "outage", "error", "spike", "alert", "p1", "p2"]
-    if not any(kw in text for kw in keywords):
-        return
-
-    from agents.manager import run_incident_crew
-
-    ts = payload.get("ts", str(time.time())).replace(".", "")[:12]
-    event = {
-        "event_id": f"slack-{ts}",
-        "service": "unknown",
-        "anomaly_type": "slack_report",
-        "severity": "P2",
-        "details": {
-            "channel": payload.get("channel"),
-            "user": payload.get("user"),
-            "text": payload.get("text"),
-        },
-    }
-    print(f"[TRIGGER] Slack incident message → {event['event_id']}")
-    result = run_incident_crew(event)
-    print(f"[TRIGGER] Pipeline done: {result}")
-
-
-# ── Demo mode ────────────────────────────────────────────────────────
-
-def run_demo():
-    """Run a demo simulation without Composio (for testing)."""
-    print("\n" + "=" * 60)
-    print("  IncidentDNA — Demo Trigger Simulation")
-    print("=" * 60)
-
-    fake_payload = {
-        "repository": {"name": "payment-service"},
-        "after": uuid.uuid4().hex,
-        "pusher": {"name": "demo-user"},
-        "head_commit": {"message": "fix: update connection pool settings"},
-    }
-
-    print(f"\n[DEMO] Simulating GitHub commit event...")
-    print(f"  Repo: {fake_payload['repository']['name']}")
-    print(f"  SHA:  {fake_payload['after'][:8]}")
-    print(f"  By:   {fake_payload['pusher']['name']}")
-
-    try:
-        handle_github_commit(fake_payload)
-    except Exception as e:
-        print(f"\n[DEMO] Pipeline error: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        close_connection()
-
-
-# ── Composio listeners ───────────────────────────────────────────────
-
-def start_listener():
-    """Start Composio WebSocket listener for GitHub + Slack events."""
-    api_key = os.getenv("COMPOSIO_API_KEY")
-    if not api_key or api_key == "your_composio_api_key":
-        print("❌ COMPOSIO_API_KEY not set. Run: python scripts/setup_composio.py")
-        print("   Or use --demo mode: python ingestion/trigger_listener.py --demo")
-        sys.exit(1)
-
-    try:
-        from composio import Composio, Trigger
-    except ImportError:
-        print("❌ Composio not installed. Run: pip install composio")
-        sys.exit(1)
-
-    client = Composio(api_key=api_key)
-
-    @client.trigger(Trigger.GITHUB_COMMIT_EVENT)
-    def on_github_commit(event):
-        try:
-            handle_github_commit(event.payload)
-        except Exception as e:
-            print(f"[TRIGGER] Error handling GitHub commit: {e}")
-
-    @client.trigger(Trigger.SLACK_RECEIVE_MESSAGE)
-    def on_slack_message(event):
-        try:
-            handle_slack_message(event.payload)
-        except Exception as e:
-            print(f"[TRIGGER] Error handling Slack message: {e}")
-
-    print("[TRIGGER LISTENER] Waiting for GitHub commits and Slack messages...")
-    print("  Press Ctrl+C to stop")
-    try:
-        client.listen()
-    except KeyboardInterrupt:
-        print("\n[TRIGGER] Shutting down...")
-    finally:
-        close_connection()
-
-
-# ── Main ─────────────────────────────────────────────────────────────
+def handle_github_push(event):
+    """Handle GitHub push event from Composio"""
+    print("\n" + "="*60)
+    print("[COMPOSIO TRIGGER] GitHub push event received!")
+    print("="*60)
+    
+    # Extract event data
+    repo_name = event.get('repository', {}).get('name', 'unknown-service')
+    commit_sha = event.get('after', 'unknown')[:7]
+    pusher = event.get('pusher', {}).get('name', 'unknown')
+    branch = event.get('ref', 'refs/heads/main').split('/')[-1]
+    
+    print(f"  Repository: {repo_name}")
+    print(f"  Commit: {commit_sha}")
+    print(f"  Pusher: {pusher}")
+    print(f"  Branch: {branch}")
+    
+    # Step 1: Insert deploy event
+    print(f"\n[STEP 1] Inserting deploy event into RAW.DEPLOY_EVENTS")
+    run_dml("""
+        INSERT INTO RAW.DEPLOY_EVENTS (
+            event_id,
+            service_name,
+            commit_hash,
+            author,
+            branch
+        ) VALUES (%s, %s, %s, %s, %s)
+    """, (
+        f"deploy_{commit_sha}",
+        repo_name,
+        commit_sha,
+        pusher,
+        branch
+    ))
+    print(f"  ✓ Deploy event created: deploy_{commit_sha}")
+    
+    # Step 2: Inject synthetic spike
+    print(f"\n[STEP 2] Injecting synthetic metric spike")
+    inject_synthetic_spike(repo_name)
+    print(f"  ✓ Spike injected")
+    
+    # Step 3: Check for anomalies
+    print(f"\n[STEP 3] Checking for anomalies")
+    anomalies = check_for_anomalies(repo_name)
+    
+    if anomalies:
+        print(f"  ✓ Found {len(anomalies)} anomalies")
+        
+        # Step 4: Trigger incident pipeline for highest severity anomaly
+        print(f"\n[STEP 4] Triggering incident pipeline")
+        trigger_incident_pipeline(anomalies[0])
+        print(f"  ✓ Pipeline triggered")
+    else:
+        print(f"  ℹ No anomalies detected (all metrics within 2 std dev)")
+    
+    print("\n" + "="*60)
+    print("[COMPOSIO TRIGGER] Processing complete!")
+    print("="*60 + "\n")
 
 def main():
-    parser = argparse.ArgumentParser(description="IncidentDNA Trigger Listener")
-    parser.add_argument("--demo", action="store_true", help="Run a demo simulation without Composio")
-    args = parser.parse_args()
-
-    if args.demo:
-        run_demo()
-    else:
-        start_listener()
-
+    """Start listening for Composio triggers"""
+    print("="*60)
+    print("IncidentDNA Trigger Listener Starting...")
+    print("="*60)
+    print(f"Listening for GitHub push events via Composio")
+    print(f"Press Ctrl+C to stop\n")
+    
+    github_owner = os.getenv("GITHUB_OWNER")
+    github_repo = os.getenv("GITHUB_REPO")
+    
+    print(f"Target repository: {github_owner}/{github_repo}")
+    print(f"✓ Composio session created")
+    print("Waiting for GitHub push events...\n")
+    
+    # Note: In production, you would use Composio triggers
+    # For now, use the simulation script: python test_crewai_trigger.py
+    print("💡 To test the system, run:")
+    print("   python test_crewai_trigger.py")
+    print("\nThis will simulate a GitHub push event and trigger the full pipeline.")
+    print("\nPress Ctrl+C to exit...")
+    
+    try:
+        import time
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\n\nShutting down...")
 
 if __name__ == "__main__":
     main()

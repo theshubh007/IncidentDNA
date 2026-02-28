@@ -1,8 +1,5 @@
-crewai==0.28.0
-langchain-core>=0.1.0
-snowflake-connector-python==3.6.0
-composio
-streamlit==1.33.0
-plotly==5.20.0
-python-dotenv==1.0.1
-requests==2.31.0
+snowflake-connector-python>=3.6.0
+python-dotenv>=1.0.1
+composio-core>=0.7.0
+composio-crewai>=0.7.0
+crewai>=0.28.0
