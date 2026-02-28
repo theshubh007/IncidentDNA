@@ -7,9 +7,9 @@ Priority order (auto-selected based on available credentials):
   3. Groq              -- if GROQ_API_KEY set (free at console.groq.com)
   4. OpenAI            -- if OPENAI_API_KEY set
 
-Default: Gemini 2.5 Flash (free tier).
-Cortex COMPLETE is not available on this account type.
-Cortex SEARCH and SIMILARITY still work for tools.
+Default: Snowflake Cortex COMPLETE (llama3.1-70b).
+Set SNOWFLAKE_CORTEX_ENABLED=true in .env to use Cortex.
+Falls back to Gemini/Groq/OpenAI if Cortex is unavailable.
 """
 
 import os

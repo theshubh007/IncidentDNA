@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { INCIDENTS_DATA } from '../data/mockData';
+import { fetchIncidents } from '../services/api';
 import { useApp } from '../hooks/useAppContext';
 import {
     X, Clock, GitBranch, MessageSquare, FileText,
@@ -233,6 +234,18 @@ export default function IncidentsPage() {
     const [drawerIncident, setDrawerIncident] = useState(null);
     const [severityFilter, setSeverityFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [apiIncidents, setApiIncidents] = useState(INCIDENTS_DATA);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            const data = await fetchIncidents();
+            if (!cancelled) setApiIncidents(data);
+        };
+        load();
+        const interval = setInterval(load, 10000);
+        return () => { cancelled = true; clearInterval(interval); };
+    }, []);
 
     const allIncidents = useMemo(() => {
         const simulated = liveEvents.map(evt => ({
@@ -253,8 +266,8 @@ export default function IncidentsPage() {
             actions: [],
             postmortem: null,
         }));
-        return [...simulated, ...INCIDENTS_DATA];
-    }, [liveEvents]);
+        return [...simulated, ...apiIncidents];
+    }, [liveEvents, apiIncidents]);
 
     const filteredIncidents = allIncidents.filter(inc => {
         if (severityFilter !== 'all' && inc.severity !== severityFilter) return false;

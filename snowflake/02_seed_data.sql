@@ -179,3 +179,19 @@ INSERT INTO ANALYTICS.METRIC_BASELINES (service_name, metric_name, baseline_avg,
 ('api-gateway', 'latency_p99', 95, 10),
 ('order-service', 'error_rate', 0.015, 0.005),
 ('order-service', 'cpu_pct', 45, 8);
+
+-- ═══════════════════════════════════════════════════════════════════
+-- SEED SLACK MESSAGES (for AI_SENTIMENT analysis)
+-- ═══════════════════════════════════════════════════════════════════
+INSERT INTO RAW.SLACK_MESSAGES (channel, author, message_text) VALUES
+('#incidents', 'oncall-bot', 'payment-service error rate spiking after deploy a3f9c2d'),
+('#incidents', 'sarah.chen', 'Looking at this now — seems like DB pool issue again'),
+('#incidents', 'mike.johnson', 'Users are complaining about checkout failures, this is urgent'),
+('#incidents', 'oncall-bot', 'api-gateway latency back to normal after rollback'),
+('#incidents', 'alex.wong', 'False alarm on order-service — just a scheduled job spike');
+
+-- ═══════════════════════════════════════════════════════════════════
+-- SEED ENRICHED DEPLOYS (CURATED layer)
+-- ═══════════════════════════════════════════════════════════════════
+INSERT INTO CURATED.ENRICHED_DEPLOYS (event_id, service_name, commit_hash, author, branch, deployed_at, files_changed, risk_score) VALUES
+('deploy_001', 'payment-service', 'a3f9c2d', 'github-actions', 'main', CURRENT_TIMESTAMP(), 12, 0.78);

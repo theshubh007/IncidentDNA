@@ -1,4 +1,4 @@
--- IncidentDNA Schema Setup (Lean Architecture)
+-- IncidentDNA Schema Setup (Full Architecture)
 -- Run this first to create all foundation tables
 
 USE DATABASE INCIDENTDNA;
@@ -51,6 +51,32 @@ CREATE TABLE IF NOT EXISTS RAW.SERVICE_DEPENDENCIES (
     depends_on VARCHAR
 );
 
+CREATE TABLE IF NOT EXISTS RAW.SLACK_MESSAGES (
+    message_id VARCHAR DEFAULT UUID_STRING() PRIMARY KEY,
+    channel VARCHAR,
+    author VARCHAR,
+    message_text VARCHAR,
+    thread_ts VARCHAR,
+    created_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+);
+
+-- ═══════════════════════════════════════════════════════════════════
+-- CURATED LAYER — Cleaned/enriched data
+-- ═══════════════════════════════════════════════════════════════════
+CREATE SCHEMA IF NOT EXISTS CURATED;
+
+CREATE TABLE IF NOT EXISTS CURATED.ENRICHED_DEPLOYS (
+    event_id VARCHAR PRIMARY KEY,
+    service_name VARCHAR,
+    commit_hash VARCHAR,
+    author VARCHAR,
+    branch VARCHAR,
+    deployed_at TIMESTAMP_NTZ,
+    files_changed INTEGER DEFAULT 0,
+    risk_score FLOAT DEFAULT 0.0,
+    enriched_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+);
+
 -- ═══════════════════════════════════════════════════════════════════
 -- AI LAYER — Agent decisions and actions
 -- ═══════════════════════════════════════════════════════════════════
@@ -95,7 +121,18 @@ CREATE TABLE IF NOT EXISTS AI.INCIDENT_HISTORY (
     fix_applied VARCHAR,
     mttr_minutes INTEGER,
     confidence FLOAT,
+    detected_at TIMESTAMP_NTZ,
+    investigated_at TIMESTAMP_NTZ,
+    alerted_at TIMESTAMP_NTZ,
     resolved_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+);
+
+CREATE TABLE IF NOT EXISTS AI.PENDING_INVESTIGATIONS (
+    investigation_id VARCHAR DEFAULT UUID_STRING() PRIMARY KEY,
+    event_id VARCHAR,
+    service_name VARCHAR,
+    triggered_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    status VARCHAR DEFAULT 'PENDING'
 );
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -110,4 +147,15 @@ CREATE TABLE IF NOT EXISTS ANALYTICS.METRIC_BASELINES (
     baseline_std FLOAT,
     last_updated TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
     PRIMARY KEY (service_name, metric_name)
+);
+
+-- ═══════════════════════════════════════════════════════════════════
+-- APP LAYER — Dashboard views and application state
+-- ═══════════════════════════════════════════════════════════════════
+CREATE SCHEMA IF NOT EXISTS APP;
+
+CREATE TABLE IF NOT EXISTS APP.DASHBOARD_STATE (
+    key VARCHAR PRIMARY KEY,
+    value VARIANT,
+    updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );

@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { POSTMORTEMS_DATA } from '../data/mockData';
+import { fetchPostmortems } from '../services/api';
 import { FileText, GitBranch, Check, ChevronRight } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 
@@ -60,7 +61,20 @@ function PostmortemDoc({ data }) {
 
 export default function PostmortemsPage() {
     const [selectedId, setSelectedId] = useState(null);
-    const selected = POSTMORTEMS_DATA.find(p => p.incidentId === selectedId);
+    const [postmortems, setPostmortems] = useState(POSTMORTEMS_DATA);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            const data = await fetchPostmortems();
+            if (!cancelled && data && data.length > 0) setPostmortems(data);
+        };
+        load();
+        const interval = setInterval(load, 15000);
+        return () => { cancelled = true; clearInterval(interval); };
+    }, []);
+
+    const selected = postmortems.find(p => p.incidentId === selectedId);
 
     return (
         <div id="postmortems-page">
@@ -74,7 +88,7 @@ export default function PostmortemsPage() {
             <div style={{ display: 'grid', gridTemplateColumns: selected ? '320px 1fr' : '1fr', gap: 'var(--space-6)' }}>
                 <div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {POSTMORTEMS_DATA.map(pm => (
+                        {postmortems.map(pm => (
                             <div
                                 key={pm.incidentId}
                                 className="card"
@@ -104,7 +118,7 @@ export default function PostmortemsPage() {
                 )}
             </div>
 
-            {!selected && POSTMORTEMS_DATA.length > 0 && (
+            {!selected && postmortems.length > 0 && (
                 <div className="empty-state" style={{ marginTop: 'var(--space-8)' }}>
                     <FileText />
                     <h3>Select a postmortem</h3>

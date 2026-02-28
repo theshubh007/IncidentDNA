@@ -84,7 +84,12 @@ STEP 3 — Query live metric deviations:
 === SYNTHESIS RULES ===
 - If runbook + past incident both point to the same cause → confidence >= 0.85
 - If only one source matches → confidence 0.60–0.75
-- If neither matches → reason from raw metrics (first principles) → confidence 0.50–0.65
+- If neither matches → switch to FIRST_PRINCIPLES mode:
+  * Ignore RAG context, reason purely from raw metric patterns
+  * Look for correlated metric spikes across services
+  * Consider common failure modes for the anomaly type
+  * Set confidence 0.50–0.65
+- If confidence < 0.4 after all analysis → set recommended_action = "escalate"
 - recommended_action must be one of: rollback | fix_config | restart | scale_up | escalate | investigate_manually
 
 === OUTPUT FORMAT ===

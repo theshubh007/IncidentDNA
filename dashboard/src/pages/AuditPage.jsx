@@ -1,5 +1,6 @@
-import { useState, Fragment } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { AUDIT_LOG_DATA } from '../data/mockData';
+import { fetchAuditLog } from '../services/api';
 import { useApp } from '../hooks/useAppContext';
 import { ChevronDown, ChevronRight, Copy } from 'lucide-react';
 
@@ -8,6 +9,18 @@ export default function AuditPage() {
     const [expandedRow, setExpandedRow] = useState(null);
     const [statusFilter, setStatusFilter] = useState('all');
     const [toolkitFilter, setToolkitFilter] = useState('all');
+    const [apiAudit, setApiAudit] = useState(AUDIT_LOG_DATA);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            const data = await fetchAuditLog();
+            if (!cancelled) setApiAudit(data);
+        };
+        load();
+        const interval = setInterval(load, 10000);
+        return () => { cancelled = true; clearInterval(interval); };
+    }, []);
 
     const allLogs = [
         ...liveActions.map(a => ({
@@ -22,7 +35,7 @@ export default function AuditPage() {
             request: { simulated: true },
             response: { ok: true },
         })),
-        ...AUDIT_LOG_DATA,
+        ...apiAudit,
     ];
 
     const toolkits = [...new Set(allLogs.map(l => l.toolkit))];

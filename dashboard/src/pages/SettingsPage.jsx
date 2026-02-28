@@ -1,25 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../hooks/useAppContext';
+import { fetchSettings } from '../services/api';
+import { SETTINGS_DATA } from '../data/mockData';
 import { Settings as SettingsIcon, Check, AlertCircle, Plug, Shield, Bell, Clock } from 'lucide-react';
-
-const CONNECTIONS = [
-    { id: 'snowflake', name: 'Snowflake', status: 'connected', detail: 'INCIDENTDNA · COMPUTE_WH', icon: '❄️' },
-    { id: 'composio-github', name: 'GitHub (Composio)', status: 'connected', detail: 'org/incidents · 3 triggers enabled', icon: '🐙' },
-    { id: 'composio-slack', name: 'Slack (Composio)', status: 'connected', detail: '#incident-alerts · WebSocket active', icon: '💬' },
-    { id: 'crewai', name: 'CrewAI Engine', status: 'connected', detail: '5 agents, hierarchical process', icon: '🤖' },
-];
-
-const POLICIES = [
-    { id: 'auto-act-threshold', label: 'Auto-Act Confidence Threshold', value: '85%', description: 'Minimum confidence to auto-execute actions without human review' },
-    { id: 'debate-rounds', label: 'Max Debate Rounds', value: '2', description: 'Maximum Ag2↔Ag5 validation rounds before Manager override' },
-    { id: 'agent-timeout', label: 'Agent Timeout', value: '30s', description: 'Per-agent execution timeout before fallback' },
-    { id: 'idempotency', label: 'Idempotency Check', value: 'Enabled', description: 'Dedup check on AI.ACTIONS before every external call' },
-    { id: 'friday-deploy', label: 'Friday Deploy Warning', value: 'Enabled', description: 'Additional risk factor for deploys on Fridays after 3 PM' },
-    { id: 'blast-radius-threshold', label: 'Blast Radius Alert Threshold', value: '≥2 services', description: 'Auto-escalate when predicted blast radius exceeds threshold' },
-];
 
 export default function SettingsPage() {
     const { addToast } = useApp();
+    const [settings, setSettings] = useState(SETTINGS_DATA);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            const data = await fetchSettings();
+            if (!cancelled && data) setSettings(data);
+        };
+        load();
+        return () => { cancelled = true; };
+    }, []);
+
+    const connections = settings.connections || [];
+    const policies = settings.policies || [];
 
     return (
         <div id="settings-page">
@@ -37,7 +37,7 @@ export default function SettingsPage() {
                         <Plug size={16} /> Tool Connections
                     </h2>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {CONNECTIONS.map(conn => (
+                        {connections.map(conn => (
                             <div key={conn.id} className="card" id={`connection-${conn.id}`}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -63,7 +63,7 @@ export default function SettingsPage() {
                         <Shield size={16} /> Agent Policies
                     </h2>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {POLICIES.map(policy => (
+                        {policies.map(policy => (
                             <div key={policy.id} className="card" id={`policy-${policy.id}`}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
                                     <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>{policy.label}</span>

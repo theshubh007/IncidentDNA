@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../hooks/useAppContext';
 import {
-    METRICS_OVERVIEW, STEPPER_STATES, DEPENDENCY_GRAPH,
-    INCIDENTS_DATA
+    fetchMetrics, fetchStepperState, fetchDependencyGraph, fetchIncidents
+} from '../services/api';
+import {
+    METRICS_OVERVIEW, STEPPER_STATES, DEPENDENCY_GRAPH, INCIDENTS_DATA
 } from '../data/mockData';
 import {
     AlertTriangle, TrendingUp, Activity, Clock, Check,
@@ -27,7 +29,7 @@ function MetricCard({ label, value, change, changeDir, icon: Icon }) {
     );
 }
 
-function LiveStepper() {
+function LiveStepper({ steps }) {
     const [expandedStep, setExpandedStep] = useState(null);
 
     return (
@@ -37,7 +39,7 @@ function LiveStepper() {
                 <span className="body-xs">INC-001 · payment-service</span>
             </div>
             <div className="stepper">
-                {STEPPER_STATES.map((step, idx) => (
+                {steps.map((step, idx) => (
                     <div key={step.id} className={`stepper-step ${step.status}`}>
                         <div className="stepper-line" />
                         <div className="stepper-dot">
@@ -66,9 +68,9 @@ function LiveStepper() {
     );
 }
 
-function BlastRadiusGraph() {
+function BlastRadiusGraph({ graph }) {
     const [hoveredNode, setHoveredNode] = useState(null);
-    const { edges } = DEPENDENCY_GRAPH;
+    const { edges } = graph;
 
     // Well-spaced node positions (percentage-based, 3-tier layout)
     const graphNodes = [
@@ -155,8 +157,22 @@ function BlastRadiusGraph() {
     );
 }
 
-function SimilarIncidents() {
-    const patterns = INCIDENTS_DATA[0].patternMemory;
+function SimilarIncidents({ incidents }) {
+    const patterns = incidents.length > 0 && incidents[0].patternMemory
+        ? incidents[0].patternMemory
+        : [];
+
+    if (patterns.length === 0) {
+        return (
+            <div className="card" id="pattern-memory-panel">
+                <div className="card-header">
+                    <span className="card-title">Similar Past Incidents</span>
+                </div>
+                <p className="body-sm" style={{ color: 'var(--text-tertiary)' }}>No pattern data available.</p>
+            </div>
+        );
+    }
+
     return (
         <div className="card" id="pattern-memory-panel">
             <div className="card-header">
@@ -207,7 +223,33 @@ function QuickSimulate() {
 
 export default function OverviewPage() {
     const { liveEvents } = useApp();
-    const m = METRICS_OVERVIEW;
+    const [metrics, setMetrics] = useState(METRICS_OVERVIEW);
+    const [steps, setSteps] = useState(STEPPER_STATES);
+    const [graph, setGraph] = useState(DEPENDENCY_GRAPH);
+    const [incidents, setIncidents] = useState(INCIDENTS_DATA);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            const [m, s, g, inc] = await Promise.all([
+                fetchMetrics(),
+                fetchStepperState('INC-001'),
+                fetchDependencyGraph('payment-service'),
+                fetchIncidents(),
+            ]);
+            if (!cancelled) {
+                setMetrics(m);
+                setSteps(s);
+                setGraph(g);
+                setIncidents(inc);
+            }
+        };
+        load();
+        const interval = setInterval(load, 15000);
+        return () => { cancelled = true; clearInterval(interval); };
+    }, []);
+
+    const m = metrics;
 
     return (
         <div id="overview-page">
@@ -230,7 +272,7 @@ export default function OverviewPage() {
 
                 {/* CENTER: Live Agent Loop */}
                 <div>
-                    <LiveStepper />
+                    <LiveStepper steps={steps} />
 
                     {liveEvents.length > 0 && (
                         <div className="card" style={{ marginTop: 'var(--space-4)' }}>
@@ -253,8 +295,8 @@ export default function OverviewPage() {
 
                 {/* RIGHT: Evidence + Prediction */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                    <BlastRadiusGraph />
-                    <SimilarIncidents />
+                    <BlastRadiusGraph graph={graph} />
+                    <SimilarIncidents incidents={incidents} />
                 </div>
             </div>
         </div>

@@ -1,5 +1,6 @@
-import { useState, Fragment } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { RELEASES_DATA } from '../data/mockData';
+import { fetchReleases } from '../services/api';
 import { ChevronDown, ChevronRight, AlertTriangle, Check, Send, ExternalLink } from 'lucide-react';
 
 function RiskChip({ risk }) {
@@ -70,6 +71,18 @@ function ReleaseDetail({ release }) {
 
 export default function ReleasesPage() {
     const [expandedRelease, setExpandedRelease] = useState(null);
+    const [releases, setReleases] = useState(RELEASES_DATA);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            const data = await fetchReleases();
+            if (!cancelled) setReleases(data);
+        };
+        load();
+        const interval = setInterval(load, 15000);
+        return () => { cancelled = true; clearInterval(interval); };
+    }, []);
 
     return (
         <div id="releases-page">
@@ -95,7 +108,7 @@ export default function ReleasesPage() {
                         </tr>
                     </thead>
                     <tbody>
-                        {RELEASES_DATA.map(release => (
+                        {releases.map(release => (
                             <Fragment key={release.id}>
                                 <tr
                                     className="clickable"

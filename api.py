@@ -110,9 +110,9 @@ def _derive_severity(confidence: float) -> str:
 def get_incidents(service: str = None, status: str = None, severity: str = None):
     rows = _lower(_sf("""
         SELECT event_id, service_name, root_cause, fix_applied,
-               confidence, mttr_minutes, created_at
+               confidence, mttr_minutes, detected_at, resolved_at
         FROM AI.INCIDENT_HISTORY
-        ORDER BY created_at DESC
+        ORDER BY resolved_at DESC
         LIMIT 100
     """))
 
@@ -124,7 +124,7 @@ def get_incidents(service: str = None, status: str = None, severity: str = None)
             "service":      r.get("service_name", ""),
             "severity":     _derive_severity(conf),
             "status":       "resolved",
-            "detected":     _to_isostr(r.get("created_at")),
+            "detected":     _to_isostr(r.get("detected_at") or r.get("resolved_at")),
             "confidence":   conf,
             "rootCause":    r.get("root_cause", ""),
             "fixApplied":   r.get("fix_applied", ""),
@@ -147,7 +147,7 @@ def get_incidents(service: str = None, status: str = None, severity: str = None)
 def get_incident(incident_id: str):
     rows = _lower(_sf("""
         SELECT event_id, service_name, root_cause, fix_applied,
-               confidence, mttr_minutes, created_at
+               confidence, mttr_minutes, detected_at, resolved_at
         FROM AI.INCIDENT_HISTORY
         WHERE event_id = %s
     """, (incident_id,)))
@@ -160,7 +160,7 @@ def get_incident(incident_id: str):
 
     # Actions for this incident
     action_rows = _lower(_sf("""
-        SELECT action_type, status, created_at, payload
+        SELECT action_type, status, executed_at, payload
         FROM AI.ACTIONS
         WHERE event_id = %s
     """, (incident_id,)))
@@ -169,7 +169,7 @@ def get_incident(incident_id: str):
         {
             "type":      a.get("action_type", "").lower(),
             "status":    a.get("status", "").lower(),
-            "timestamp": _to_isostr(a.get("created_at")),
+            "timestamp": _to_isostr(a.get("executed_at")),
         }
         for a in action_rows
     ]
@@ -197,7 +197,7 @@ def get_incident(incident_id: str):
         "service":      r.get("service_name", ""),
         "severity":     _derive_severity(conf),
         "status":       "resolved",
-        "detected":     _to_isostr(r.get("created_at")),
+        "detected":     _to_isostr(r.get("detected_at") or r.get("resolved_at")),
         "confidence":   conf,
         "rootCause":    r.get("root_cause", ""),
         "fixApplied":   r.get("fix_applied", ""),
@@ -260,7 +260,7 @@ def get_metrics():
             AVG(confidence)     AS avg_confidence,
             AVG(mttr_minutes)   AS avg_mttr
         FROM AI.INCIDENT_HISTORY
-        WHERE created_at >= DATEADD('day', -1, CURRENT_TIMESTAMP)
+        WHERE resolved_at >= DATEADD('day', -1, CURRENT_TIMESTAMP)
     """))
     s = stats[0] if stats else {}
 
@@ -272,17 +272,118 @@ def get_metrics():
     """))
     a = action_stats[0] if action_stats else {}
 
+    # Query live metrics for error rate and latency instead of hardcoding
+    live_metrics = _lower(_sf("""
+        SELECT
+            metric_name,
+            AVG(current_value) AS avg_value
+        FROM ANALYTICS.METRIC_DEVIATIONS
+        WHERE metric_name IN ('error_rate', 'latency_p99')
+        GROUP BY metric_name
+    """))
+    metric_map = {r.get("metric_name", ""): float(r.get("avg_value") or 0) for r in live_metrics}
+
+    # Count active (unresolved) anomalies
+    active_rows = _lower(_sf("""
+        SELECT COUNT(*) AS active_count
+        FROM AI.ANOMALY_EVENTS
+        WHERE status IN ('NEW', 'PROCESSING')
+    """))
+    active_count = int((active_rows[0] if active_rows else {}).get("active_count") or 0)
+
     return {
-        "activeIncidents":      0,
+        "activeIncidents":      active_count,
         "deployConfidence":     round(float(s.get("avg_confidence") or 0.72) * 100),
-        "errorRate":            0.04,
-        "latencyP99":           89,
+        "errorRate":            round(metric_map.get("error_rate", 0.02), 4),
+        "latencyP99":           round(metric_map.get("latency_p99", 45), 1),
         "mttrAvg":              round(float(s.get("avg_mttr") or 11.2), 1),
         "mttrIndustry":         47,
         "totalIncidents24h":    int(s.get("total_incidents") or 0),
         "actionsExecuted":      int(a.get("total") or 0),
         "deduplicatedActions":  max(0, int(a.get("total") or 0) - int(a.get("sent_count") or 0)),
     }
+
+
+# ── MTTR Analytics ────────────────────────────────────────────────────────────
+
+@app.get("/api/v1/metrics/mttr")
+def get_mttr():
+    rows = _lower(_sf("""
+        SELECT service_name, total_incidents, avg_mttr_minutes,
+               avg_detect_to_investigate_min, avg_investigate_to_alert_min,
+               avg_alert_to_resolve_min, avg_confidence, best_mttr, worst_mttr
+        FROM ANALYTICS.MTTR_METRICS
+    """))
+    return rows if rows else []
+
+
+# ── Metric Deviations ────────────────────────────────────────────────────────
+
+@app.get("/api/v1/metrics/deviations")
+def get_deviations():
+    rows = _lower(_sf("""
+        SELECT service_name, metric_name, current_value, baseline_avg,
+               z_score, severity, ai_severity, recorded_at
+        FROM ANALYTICS.METRIC_DEVIATIONS
+        ORDER BY recorded_at DESC
+        LIMIT 50
+    """))
+    return rows if rows else []
+
+
+# ── Blast Radius ─────────────────────────────────────────────────────────────
+
+@app.get("/api/v1/metrics/blast-radius")
+def get_blast_radius():
+    rows = _lower(_sf("""
+        SELECT source_service, source_severity, source_z_score,
+               affected_service, recorded_at
+        FROM ANALYTICS.BLAST_RADIUS
+        ORDER BY recorded_at DESC
+        LIMIT 50
+    """))
+    return rows if rows else []
+
+
+# ── Reasoning Trace ──────────────────────────────────────────────────────────
+
+@app.get("/api/v1/reasoning/{event_id}")
+def get_reasoning(event_id: str):
+    rows = _lower(_sf("""
+        SELECT agent_name, reasoning, output, confidence, created_at
+        FROM AI.DECISIONS
+        WHERE event_id = %s
+        ORDER BY created_at ASC
+    """, (event_id,)))
+    return rows if rows else []
+
+
+# ── Metric Forecast ──────────────────────────────────────────────────────────
+
+@app.get("/api/v1/metrics/forecast")
+def get_forecast():
+    rows = _lower(_sf("""
+        SELECT service_name, forecast_time, predicted_value,
+               predicted_z_score, predicted_severity, at_risk_services
+        FROM ANALYTICS.BLAST_RADIUS_FORECAST
+        ORDER BY forecast_time ASC
+        LIMIT 30
+    """))
+    return rows if rows else []
+
+
+# ── Slack Sentiment ──────────────────────────────────────────────────────────
+
+@app.get("/api/v1/metrics/sentiment")
+def get_sentiment():
+    rows = _lower(_sf("""
+        SELECT message_id, channel, author, message_text,
+               sentiment_score, sentiment_label, created_at
+        FROM ANALYTICS.SLACK_SENTIMENT
+        ORDER BY created_at DESC
+        LIMIT 20
+    """))
+    return rows if rows else []
 
 
 # ── Services ──────────────────────────────────────────────────────────────────
@@ -342,32 +443,74 @@ def get_service_dependencies(service_id: str):
 @app.get("/api/v1/releases")
 def get_releases():
     rows = _lower(_sf("""
-        SELECT event_id, service_name, deploy_sha, deployed_at, severity
+        SELECT event_id, service_name, commit_hash, author, branch, deployed_at
         FROM RAW.DEPLOY_EVENTS
         ORDER BY deployed_at DESC
         LIMIT 20
     """))
 
-    return [
-        {
+    # Get per-service confidence from recent incidents
+    confidence_rows = _lower(_sf("""
+        SELECT service_name, AVG(confidence) AS avg_conf
+        FROM AI.INCIDENT_HISTORY
+        GROUP BY service_name
+    """))
+    svc_conf = {r.get("service_name", ""): float(r.get("avg_conf") or 0.72) for r in confidence_rows}
+
+    # Get active deviations for risk assessment
+    deviation_svcs = {r.get("service_name", "") for r in _lower(_sf(
+        "SELECT DISTINCT service_name FROM ANALYTICS.METRIC_DEVIATIONS"
+    ))}
+
+    releases = []
+    for r in rows:
+        svc = r.get("service_name", "")
+        conf = round(svc_conf.get(svc, 0.72) * 100)
+        has_deviations = svc in deviation_svcs
+        risk = "high" if has_deviations and conf < 60 else "medium" if has_deviations else "low"
+        risk_factors = []
+        if has_deviations:
+            risk_factors.append("Active metric deviations detected")
+        if conf < 70:
+            risk_factors.append(f"Below-average confidence ({conf}%)")
+
+        releases.append({
             "id":          r.get("event_id", ""),
-            "service":     r.get("service_name", ""),
-            "version":     (r.get("deploy_sha") or "")[:8] or "unknown",
-            "confidence":  72,
-            "risk":        "medium",
-            "author":      "engineer",
+            "service":     svc,
+            "version":     (r.get("commit_hash") or "")[:8] or "unknown",
+            "confidence":  conf,
+            "risk":        risk,
+            "author":      r.get("author", "engineer"),
             "timestamp":   _to_isostr(r.get("deployed_at")),
             "status":      "deployed",
-            "riskFactors": [],
+            "branch":      r.get("branch", "main"),
+            "riskFactors": risk_factors,
             "guardrails":  [],
             "evidence":    [],
-        }
-        for r in rows
-    ]
+        })
+
+    return releases
 
 
 @app.get("/api/v1/releases/{release_id}/confidence")
 def get_release_confidence(release_id: str):
+    rows = _lower(_sf("""
+        SELECT d.service_name, ih.confidence
+        FROM RAW.DEPLOY_EVENTS d
+        LEFT JOIN AI.INCIDENT_HISTORY ih ON d.service_name = ih.service_name
+        WHERE d.event_id = %s
+        ORDER BY ih.resolved_at DESC
+        LIMIT 1
+    """, (release_id,)))
+
+    if rows and rows[0].get("confidence"):
+        conf = round(float(rows[0]["confidence"]) * 100)
+        risk = "high" if conf < 60 else "medium" if conf < 80 else "low"
+        risk_factors = []
+        if conf < 70:
+            risk_factors.append(f"Historical confidence: {conf}%")
+        return {"confidence": conf, "risk": risk, "riskFactors": risk_factors}
+
     return {"confidence": 72, "risk": "medium", "riskFactors": []}
 
 
@@ -376,9 +519,9 @@ def get_release_confidence(release_id: str):
 @app.get("/api/v1/postmortems")
 def get_postmortems():
     rows = _lower(_sf("""
-        SELECT event_id, service_name, root_cause, fix_applied, confidence, created_at
+        SELECT event_id, service_name, root_cause, fix_applied, confidence, detected_at, resolved_at
         FROM AI.INCIDENT_HISTORY
-        ORDER BY created_at DESC
+        ORDER BY resolved_at DESC
         LIMIT 20
     """))
 
@@ -388,7 +531,7 @@ def get_postmortems():
 @app.get("/api/v1/postmortems/{incident_id}")
 def get_postmortem(incident_id: str):
     rows = _lower(_sf("""
-        SELECT event_id, service_name, root_cause, fix_applied, confidence, created_at
+        SELECT event_id, service_name, root_cause, fix_applied, confidence, detected_at, resolved_at
         FROM AI.INCIDENT_HISTORY
         WHERE event_id = %s
     """, (incident_id,)))
@@ -406,7 +549,7 @@ def _build_postmortem(r: dict) -> dict:
         "service":    r.get("service_name", ""),
         "severity":   _derive_severity(conf),
         "status":     "draft_ready",
-        "detectedAt": _to_isostr(r.get("created_at")),
+        "detectedAt": _to_isostr(r.get("detected_at") or r.get("resolved_at")),
         "rootCause":  r.get("root_cause", ""),
         "confidence": conf,
         "postmortem": {
@@ -425,9 +568,9 @@ def _build_postmortem(r: dict) -> dict:
 @app.get("/api/v1/audit")
 def get_audit(action_type: str = None, status: str = None):
     rows = _lower(_sf("""
-        SELECT idempotency_key, event_id, action_type, status, created_at, payload
+        SELECT idempotency_key, event_id, action_type, status, executed_at, payload
         FROM AI.ACTIONS
-        ORDER BY created_at DESC
+        ORDER BY executed_at DESC
         LIMIT 100
     """))
 
@@ -447,7 +590,7 @@ def get_audit(action_type: str = None, status: str = None):
             "status":         (r.get("status") or "").lower(),
             "retryCount":     0,
             "idempotencyKey": r.get("idempotency_key", ""),
-            "timestamp":      _to_isostr(r.get("created_at")),
+            "timestamp":      _to_isostr(r.get("executed_at")),
             "request":        payload,
             "response":       {},
         })

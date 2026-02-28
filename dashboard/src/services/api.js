@@ -300,6 +300,51 @@ export async function createGitHubIssue(repo, title, body) {
     });
 }
 
+// ── MTTR Analytics ───────────────────────────────────────────
+
+export async function fetchMTTR() {
+    if (!config.useLiveData) return [];
+
+    const data = await request('/metrics/mttr');
+    return data ?? [];
+}
+
+// ── Metric Deviations ───────────────────────────────────────
+
+export async function fetchDeviations() {
+    if (!config.useLiveData) return [];
+
+    const data = await request('/metrics/deviations');
+    return data ?? [];
+}
+
+// ── Blast Radius ────────────────────────────────────────────
+
+export async function fetchBlastRadius() {
+    if (!config.useLiveData) return [];
+
+    const data = await request('/metrics/blast-radius');
+    return data ?? [];
+}
+
+// ── Reasoning Trace ─────────────────────────────────────────
+
+export async function fetchReasoning(eventId) {
+    if (!config.useLiveData) return [];
+
+    const data = await request(`/reasoning/${eventId}`);
+    return data ?? [];
+}
+
+// ── Slack Sentiment ─────────────────────────────────────────
+
+export async function fetchSentiment() {
+    if (!config.useLiveData) return [];
+
+    const data = await request('/metrics/sentiment');
+    return data ?? [];
+}
+
 // ── Snowflake Queries ────────────────────────────────────────
 
 export async function querySnowflake(sql) {

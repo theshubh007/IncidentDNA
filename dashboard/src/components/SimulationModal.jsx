@@ -1,11 +1,27 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../hooks/useAppContext';
 import { SIMULATION_SCENARIOS } from '../data/mockData';
+import { fetchSimulationScenarios, runSimulation as apiRunSimulation } from '../services/api';
+import config from '../config';
 import { X, Zap, Check, Loader } from 'lucide-react';
 
 export default function SimulationModal() {
     const { simulationModalOpen, setSimulationModalOpen, runSimulation, simulationState } = useApp();
+    const [scenarios, setScenarios] = useState(SIMULATION_SCENARIOS);
     const [selectedScenario, setSelectedScenario] = useState(SIMULATION_SCENARIOS[0].id);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            const data = await fetchSimulationScenarios();
+            if (!cancelled && data && data.length > 0) {
+                setScenarios(data);
+                setSelectedScenario(data[0].id);
+            }
+        };
+        load();
+        return () => { cancelled = true; };
+    }, []);
 
     if (!simulationModalOpen && !simulationState) return null;
 
@@ -56,7 +72,16 @@ export default function SimulationModal() {
         );
     }
 
-    const scenario = SIMULATION_SCENARIOS.find(s => s.id === selectedScenario);
+    const scenario = scenarios.find(s => s.id === selectedScenario);
+
+    const handleRunSimulation = async () => {
+        if (!scenario) return;
+        // Trigger real pipeline if live data is enabled
+        if (config.useLiveData) {
+            apiRunSimulation(scenario.id);
+        }
+        runSimulation(scenario);
+    };
 
     return (
         <div className="modal-overlay" onClick={() => setSimulationModalOpen(false)} id="simulation-modal">
@@ -72,7 +97,7 @@ export default function SimulationModal() {
                         Trigger a deterministic demo scenario. New rows will appear in Events, Decisions, and Actions.
                     </p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {SIMULATION_SCENARIOS.map(s => (
+                        {scenarios.map(s => (
                             <label
                                 key={s.id}
                                 style={{
@@ -113,7 +138,7 @@ export default function SimulationModal() {
                     </button>
                     <button
                         className="btn btn-primary"
-                        onClick={() => scenario && runSimulation(scenario)}
+                        onClick={handleRunSimulation}
                         id="run-simulation-btn"
                     >
                         <Zap size={14} />

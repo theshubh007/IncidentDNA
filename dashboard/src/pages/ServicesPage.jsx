@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SERVICES, SERVICE_SPARKLINES, INCIDENTS_DATA } from '../data/mockData';
+import { fetchServices, fetchIncidents } from '../services/api';
 import { Activity, ArrowRight, Server, ExternalLink } from 'lucide-react';
 
 function Sparkline({ data, color = 'var(--text-tertiary)', width = 80, height = 24 }) {
@@ -77,6 +78,19 @@ function ServiceCard({ service }) {
 }
 
 export default function ServicesPage() {
+    const [services, setServices] = useState(SERVICES);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            const data = await fetchServices();
+            if (!cancelled && data && data.length > 0) setServices(data);
+        };
+        load();
+        const interval = setInterval(load, 15000);
+        return () => { cancelled = true; clearInterval(interval); };
+    }, []);
+
     return (
         <div id="services-page">
             <div className="page-header">
@@ -87,7 +101,7 @@ export default function ServicesPage() {
             </div>
 
             <div className="grid-3">
-                {SERVICES.map(service => (
+                {services.map(service => (
                     <ServiceCard key={service.id} service={service} />
                 ))}
             </div>

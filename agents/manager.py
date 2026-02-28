@@ -8,8 +8,11 @@ Called directly by ingestion/trigger_listener.py (no HTTP bridge).
 
 import json
 import re
+from datetime import datetime, timezone
 from agents.ag1_detector import make_detector, detector_task
 from agents.ag2_investigator import make_investigator, investigator_task
+from agents.ag3_fix_advisor import make_fix_advisor, fix_advisor_task
+from agents.ag4_action_agent import make_action_agent, action_task
 from agents.ag5_validator import make_validator, validator_task
 from agents.crew import make_crew
 from tools.composio_actions import post_slack_alert, create_github_issue
@@ -136,6 +139,9 @@ def run_incident_crew(event: dict) -> dict:
     print(f"[MANAGER] Service={event['service']}  Anomaly={event['anomaly_type']}")
     print(f"{'='*60}\n")
 
+    # Track MTTR phase timestamps
+    ts_detected = datetime.now(timezone.utc)
+
     # ── Phase 1: Detect ──────────────────────────────────────────────────────
     print("[MANAGER] Phase 1: Detection")
     ag1 = make_detector()
@@ -177,6 +183,90 @@ def run_incident_crew(event: dict) -> dict:
         confidence = investigation["confidence"],
     )
     print(f"[AG2] Investigation result: {investigation}")
+
+    # ── First-principles fallback (code-enforced) ──────────────────────────
+    # If evidence is weak, re-run Ag2 in explicit first-principles mode
+    evidence = investigation.get("evidence_sources", [])
+    conf = _safe_float(investigation.get("confidence", 0), 0.0)
+    weak_evidence = (
+        len(evidence) == 0
+        or (len(evidence) == 1 and evidence[0] == "metrics")
+        or conf < 0.4
+    )
+
+    if weak_evidence:
+        print(f"\n[MANAGER] ⚡ Weak evidence detected (sources={evidence}, confidence={conf})")
+        print(f"[MANAGER] Re-running Ag2 in FIRST_PRINCIPLES mode...")
+
+        from agents.ag2_investigator import make_investigator as _make_inv
+        from crewai import Task as _Task
+
+        fp_agent = _make_inv()
+        service = event["service"]
+        anomaly = event["anomaly_type"]
+        fp_task = _Task(
+            description=f"""
+You are in FIRST_PRINCIPLES mode. Prior investigation found weak evidence.
+
+=== INCIDENT ===
+Service: {service}
+Anomaly: {anomaly}
+Severity: {detection.get('severity', 'P3')}
+Prior root cause guess: {investigation.get('root_cause', 'unknown')}
+Prior confidence: {conf}
+
+=== INSTRUCTIONS ===
+Ignore RAG context. Reason purely from raw data:
+
+1. Query live metrics:
+   Use tool: query_snowflake
+   SQL: SELECT metric_name, current_value, baseline_avg, z_score FROM ANALYTICS.METRIC_DEVIATIONS WHERE service_name = '{service}' ORDER BY ABS(z_score) DESC LIMIT 10
+
+2. Query correlated services:
+   Use tool: query_snowflake
+   SQL: SELECT d.depends_on, md.metric_name, md.z_score FROM RAW.SERVICE_DEPENDENCIES d LEFT JOIN ANALYTICS.METRIC_DEVIATIONS md ON d.depends_on = md.service_name WHERE d.service_name = '{service}'
+
+3. Reason from first principles:
+   - What failure modes produce this metric pattern?
+   - Are upstream/downstream services also affected?
+   - Is this a deploy regression, infrastructure issue, or dependency failure?
+   - What is the simplest explanation consistent with the data?
+
+=== OUTPUT FORMAT ===
+Return ONLY JSON:
+{{"root_cause": "first-principles analysis of the cause", "confidence": 0.50-0.65, "evidence_sources": ["first_principles", "metrics"], "recommended_action": "rollback|fix_config|restart|scale_up|escalate", "mode": "FIRST_PRINCIPLES"}}
+""",
+            agent=fp_agent,
+            expected_output='Valid JSON with keys: root_cause, confidence, evidence_sources, recommended_action, mode',
+        )
+
+        fp_raw = make_crew([fp_agent], [fp_task]).kickoff().raw
+        fp_result = _safe_parse(fp_raw)
+
+        if "error" not in fp_result and fp_result.get("root_cause"):
+            fp_result.setdefault("confidence", 0.55)
+            fp_result.setdefault("evidence_sources", ["first_principles", "metrics"])
+            fp_result.setdefault("recommended_action", "escalate")
+            fp_result["mode"] = "FIRST_PRINCIPLES"
+            investigation = fp_result
+
+            _log_decision(
+                event_id   = event["event_id"],
+                agent_name = "ag2_first_principles",
+                input_data = {**event, **detection},
+                output_data= investigation,
+                reasoning  = fp_raw,
+                confidence = investigation["confidence"],
+            )
+            print(f"[AG2-FP] First-principles result: {investigation}")
+        else:
+            print(f"[AG2-FP] First-principles re-run failed, keeping original investigation")
+            # If even first-principles fails and confidence is very low, force escalation
+            if conf < 0.4:
+                investigation["recommended_action"] = "escalate"
+                print(f"[AG2-FP] Forced recommended_action=escalate (confidence={conf})")
+
+    ts_investigated = datetime.now(timezone.utc)
 
     # ── Phase 3: Validate + Debate loop ──────────────────────────────────────
 
@@ -259,45 +349,94 @@ def run_incident_crew(event: dict) -> dict:
     if not approved:
         print(f"[MANAGER] Max debate rounds reached. Proceeding with confidence={investigation['confidence']}")
 
-    # ── Phase 4: Act ─────────────────────────────────────────────────────────
-    print("\n[MANAGER] Phase 4: Actions")
+    # ── Phase 4: Fix Advisor (Ag3) ───────────────────────────────────────────
+    print("\n[MANAGER] Phase 4: Fix Advisory")
+    ag3 = make_fix_advisor()
+    t3  = fix_advisor_task(ag3, event, investigation)
+    fix_raw = make_crew([ag3], [t3]).kickoff().raw
+    fix_result = _safe_parse(fix_raw)
+
+    fix_options = fix_result.get("fix_options", [])
+    if not fix_options:
+        fix_options = [{"rank": 1, "title": investigation["recommended_action"], "commands": [], "estimated_time": "unknown", "risk_level": "MEDIUM", "rollback": "Revert deploy"}]
+
+    _log_decision(
+        event_id   = event["event_id"],
+        agent_name = "ag3_fix_advisor",
+        input_data = {**event, "investigation": investigation},
+        output_data= fix_result,
+        reasoning  = fix_raw,
+        confidence = investigation["confidence"],
+    )
+    print(f"[AG3] Fix options: {len(fix_options)} generated")
+
+    # ── Phase 5: Action Agent (Ag4) ──────────────────────────────────────────
+    print("\n[MANAGER] Phase 5: Actions")
     root_cause = investigation["root_cause"]
     fix        = investigation["recommended_action"]
     severity   = detection["severity"]
 
-    slack_result  = post_slack_alert(event["event_id"], event["service"], severity, root_cause)
+    # Use Ag4 to compose action content
+    ag4 = make_action_agent()
+    t4  = action_task(ag4, event, detection, investigation, fix_options)
+    action_raw = make_crew([ag4], [t4]).kickoff().raw
+    action_content = _safe_parse(action_raw)
+
+    _log_decision(
+        event_id   = event["event_id"],
+        agent_name = "ag4_action_agent",
+        input_data = {**event, "detection": detection, "investigation": investigation},
+        output_data= action_content,
+        reasoning  = action_raw,
+        confidence = investigation["confidence"],
+    )
+
+    # Execute actions via Composio
+    blast_radius = detection.get("blast_radius", [])
+    slack_result  = post_slack_alert(
+        event["event_id"], event["service"], severity, root_cause,
+        blast_radius=blast_radius, fix_options=fix_options,
+    )
     github_result = create_github_issue(event["event_id"], event["service"], severity, root_cause, fix)
 
-    print(f"[ACTIONS] Slack  → {slack_result}")
-    print(f"[ACTIONS] GitHub → {github_result}")
+    print(f"[AG4] Slack  → {slack_result}")
+    print(f"[AG4] GitHub → {github_result}")
+    ts_alerted = datetime.now(timezone.utc)
 
     # Log manager's final decision
     _log_decision(
         event_id   = event["event_id"],
         agent_name = "manager",
-        input_data = {**event, "investigation": investigation, "detection": detection},
-        output_data= {"slack": slack_result, "github": github_result, "approved": approved},
-        reasoning  = f"Pipeline completed. Approved={approved}. Debate rounds={debate_round}.",
+        input_data = {**event, "investigation": investigation, "detection": detection, "fix_options": fix_options},
+        output_data= {"slack": slack_result, "github": github_result, "approved": approved, "fix_options": fix_options},
+        reasoning  = f"Pipeline completed. Approved={approved}. Debate rounds={debate_round}. Fix options={len(fix_options)}.",
         confidence = investigation["confidence"],
     )
 
-    # ── Phase 5: Store DNA ────────────────────────────────────────────────────
-    print("\n[MANAGER] Phase 5: Storing incident DNA")
+    # ── Phase 6: Store DNA ────────────────────────────────────────────────────
+    print("\n[MANAGER] Phase 6: Storing incident DNA")
+    ts_resolved = datetime.now(timezone.utc)
+    mttr_minutes = int((ts_resolved - ts_detected).total_seconds() / 60)
     try:
         run_dml(
             """INSERT INTO AI.INCIDENT_HISTORY
-                   (event_id, service_name, root_cause, fix_applied, confidence, mttr_minutes)
-               VALUES (%s, %s, %s, %s, %s, %s)""",
+                   (event_id, service_name, root_cause, fix_applied, confidence,
+                    mttr_minutes, detected_at, investigated_at, alerted_at, resolved_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 event["event_id"],
                 event["service"],
                 root_cause,
                 fix,
                 investigation["confidence"],
-                0,  # mttr updated externally once incident is truly resolved
+                mttr_minutes,
+                ts_detected.strftime("%Y-%m-%d %H:%M:%S"),
+                ts_investigated.strftime("%Y-%m-%d %H:%M:%S"),
+                ts_alerted.strftime("%Y-%m-%d %H:%M:%S"),
+                ts_resolved.strftime("%Y-%m-%d %H:%M:%S"),
             ),
         )
-        print("[MANAGER] ✅ Incident DNA stored in AI.INCIDENT_HISTORY")
+        print(f"[MANAGER] Incident DNA stored — MTTR={mttr_minutes}min (detect→investigate→alert→resolve)")
     except Exception as e:
         print(f"[MANAGER] Warning: failed to store DNA: {e}")
 
@@ -306,6 +445,7 @@ def run_incident_crew(event: dict) -> dict:
         "severity":     severity,
         "root_cause":   root_cause,
         "fix":          fix,
+        "fix_options":  fix_options,
         "confidence":   investigation["confidence"],
         "approved":     approved,
         "debate_rounds": debate_round,
