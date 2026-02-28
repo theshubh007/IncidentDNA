@@ -128,81 +128,67 @@ function LiveStepper({ steps }) {
     );
 }
 
-/* ── Tech Stack Graph (from repo languages) ──────────────────── */
-function TechStackGraph({ languages }) {
-    const [hoveredNode, setHoveredNode] = useState(null);
+/* ── File Structure (from repo fileTree) ──────────────────────── */
+function FileStructure({ fileTree, repoName }) {
+    if (!fileTree || fileTree.length === 0) return null;
 
-    const entries = languages
-        ? Object.entries(languages).sort((a, b) => b[1] - a[1])
-        : [];
+    const dirs = fileTree.filter(f => f.type === 'dir');
+    const files = fileTree.filter(f => f.type !== 'dir');
 
-    if (entries.length === 0) return null;
+    const fmtSize = (bytes) => {
+        if (!bytes || bytes === 0) return '';
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / 1048576).toFixed(1)} MB`;
+    };
 
-    // Build nodes from languages — circular layout
-    const graphNodes = entries.map(([lang, pct], i) => {
-        const total = entries.length;
-        const angle = (2 * Math.PI * i) / Math.max(total, 1) - Math.PI / 2;
-        const radius = total <= 3 ? 25 : 35;
-        const x = 50 + radius * Math.cos(angle);
-        const y = 50 + radius * Math.sin(angle);
-        return {
-            id: lang, label: lang, pct,
-            x: Math.round(x), y: Math.round(y),
-            color: LANG_COLORS[lang] || '#71717a',
+    const fileIcon = (name) => {
+        const ext = name.split('.').pop()?.toLowerCase();
+        const colorMap = {
+            py: '#3572A5', js: '#f1e05a', jsx: '#f1e05a', ts: '#3178c6', tsx: '#3178c6',
+            json: '#71717a', yml: '#cb171e', yaml: '#cb171e', md: '#083fa1',
+            css: '#563d7c', html: '#e34c26', sh: '#89e051', sql: '#e38c00',
+            env: '#71717a', txt: '#71717a', toml: '#9c4221', cfg: '#71717a',
         };
-    });
-
-    // Connect each language to the primary (first/largest)
-    const primary = graphNodes[0];
-    const edges = graphNodes.slice(1).map(n => ({ from: primary.id, to: n.id }));
+        return colorMap[ext] || '#71717a';
+    };
 
     return (
-        <div className="card blast-radius-card" id="blast-radius-panel">
+        <div className="card" id="blast-radius-panel" style={{ maxHeight: '420px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div className="card-header">
-                <span className="card-title">Tech Stack</span>
-                <span className="severity-chip healthy">{entries.length} languages</span>
+                <span className="card-title">File Structure</span>
+                <span className="body-xs">{fileTree.length} items</span>
             </div>
-            <div className="blast-graph">
-                <svg className="blast-graph-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
-                    <defs>
-                        <linearGradient id="edgeNorm" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" stopColor="#71717a" stopOpacity="0.3" />
-                            <stop offset="100%" stopColor="#71717a" stopOpacity="0.08" />
-                        </linearGradient>
-                    </defs>
-                    {edges.map((edge, i) => {
-                        const from = graphNodes.find(n => n.id === edge.from);
-                        const to = graphNodes.find(n => n.id === edge.to);
-                        if (!from || !to) return null;
-                        const isLit = hoveredNode && (hoveredNode === from.id || hoveredNode === to.id);
-                        return (
-                            <line key={i}
-                                x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                                stroke="url(#edgeNorm)"
-                                strokeWidth={isLit ? 0.8 : 0.35}
-                                strokeDasharray="2 1.5"
-                                opacity={isLit ? 1 : 0.7}
-                                style={{ transition: 'stroke-width 200ms, opacity 200ms' }}
-                            />
-                        );
-                    })}
-                </svg>
-
-                {graphNodes.map(node => {
-                    const isHovered = hoveredNode === node.id;
-                    return (
-                        <div key={node.id}
-                            className={`blast-node healthy${isHovered ? ' hovered' : ''}`}
-                            style={{ left: `${node.x}%`, top: `${node.y}%` }}
-                            onMouseEnter={() => setHoveredNode(node.id)}
-                            onMouseLeave={() => setHoveredNode(null)}
-                        >
-                            <span className="blast-node-ring" style={{ '--node-color': node.color }} />
-                            <span className="blast-node-dot" style={{ background: node.color }} />
-                            <span className="blast-node-label">{node.label} ({node.pct}%)</span>
-                        </div>
-                    );
-                })}
+            <div style={{ overflow: 'auto', flex: 1, fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
+                {dirs.map(d => (
+                    <div key={d.name} style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '5px 12px', borderBottom: '1px solid var(--border-primary)',
+                        transition: 'background 150ms', cursor: 'default',
+                    }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-sidebar-hover)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                        <ChevronRight size={12} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+                        <Code2 size={13} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}/</span>
+                    </div>
+                ))}
+                {files.map(f => (
+                    <div key={f.name} style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '5px 12px', borderBottom: '1px solid var(--border-primary)',
+                        transition: 'background 150ms', cursor: 'default',
+                    }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-sidebar-hover)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                        <span style={{ width: '12px', flexShrink: 0 }} />
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: fileIcon(f.name), flexShrink: 0 }} />
+                        <span style={{ color: 'var(--text-secondary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: '10px', flexShrink: 0 }}>{fmtSize(f.size)}</span>
+                    </div>
+                ))}
             </div>
         </div>
     );
@@ -470,8 +456,8 @@ export default function OverviewPage() {
 
                 {/* RIGHT: Tech stack (real) or Blast Radius (mock) + Contributors/Incidents */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                    {hasRepo && repo.languages
-                        ? <TechStackGraph languages={repo.languages} />
+                    {hasRepo && repo.fileTree?.length > 0
+                        ? <FileStructure fileTree={repo.fileTree} repoName={repo.fullName} />
                         : <BlastRadiusGraph graph={graph} />
                     }
                     {hasRepo && repo.contributors?.length > 0
