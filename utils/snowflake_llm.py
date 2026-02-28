@@ -1,102 +1,41 @@
 """
-Snowflake Cortex LLM wrapper for CrewAI.
+LLM provider for CrewAI agents.
 
-Uses SNOWFLAKE.CORTEX.COMPLETE with llama3.1-70b — completely free
-with the hackathon Snowflake account. No external API key needed.
+Priority order (auto-selected based on available credentials):
+  1. Snowflake Cortex  -- if SNOWFLAKE_CORTEX_ENABLED=true in .env
+  2. Groq              -- if GROQ_API_KEY set (free at console.groq.com)
+  3. OpenAI            -- if OPENAI_API_KEY set
 
-Model options (all free in Cortex):
-  llama3.1-70b   ← default, best quality
-  llama3.1-8b    ← faster, lighter
-  mistral-large  ← alternative
+For this hackathon: Groq is the default.
+Cortex COMPLETE is not available on this account type.
+Cortex SEARCH and SIMILARITY still work for tools.
+
+Model used: llama3.1-70b (same model on both Groq and Cortex)
 """
 
+import os
 import json
-from typing import Any, List, Optional
+from typing import Any, Iterator
 
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import (
-    AIMessage,
-    BaseMessage,
-    HumanMessage,
-    SystemMessage,
-)
-from langchain_core.outputs import ChatGeneration, ChatResult
+import litellm
+from litellm import CustomLLM, ModelResponse
+from litellm.types.utils import Choices, Message, Usage
+from crewai import LLM
 
 from utils.snowflake_conn import get_connection
 
 
-class SnowflakeCortexLLM(BaseChatModel):
-    """
-    LangChain-compatible chat model that calls Snowflake Cortex COMPLETE.
-    Drop-in replacement for ChatGroq / ChatOpenAI in CrewAI agents.
-    """
-
-    model_name: str = "llama3.1-70b"
-    temperature: float = 0.0
-
-    @property
-    def _llm_type(self) -> str:
-        return "snowflake_cortex"
-
-    def _generate(
-        self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Any = None,
-        **kwargs: Any,
-    ) -> ChatResult:
-        # Convert LangChain messages → Snowflake messages format
-        sf_messages = []
-        for msg in messages:
-            if isinstance(msg, SystemMessage):
-                role = "system"
-            elif isinstance(msg, HumanMessage):
-                role = "user"
-            else:
-                role = "assistant"
-            sf_messages.append({"role": role, "content": msg.content})
-
-        # Call SNOWFLAKE.CORTEX.COMPLETE via parameterised query (safe from injection)
-        conn = get_connection()
-        cur = None
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT SNOWFLAKE.CORTEX.COMPLETE(%s, %s) AS response",
-                (self.model_name, json.dumps(sf_messages)),
-            )
-            row = cur.fetchone()
-            raw = row[0] if row else ""
-        finally:
-            if cur:
-                cur.close()
-            conn.close()
-
-        # Parse response — COMPLETE with messages array returns JSON or plain string
-        text = _extract_text(raw)
-
-        return ChatResult(
-            generations=[ChatGeneration(message=AIMessage(content=text))]
-        )
-
-    @property
-    def _identifying_params(self) -> dict:
-        return {"model_name": self.model_name}
-
+# ── Snowflake Cortex COMPLETE provider (use if account supports it) ───────────
 
 def _extract_text(raw: Any) -> str:
-    """Handle all response shapes from Snowflake Cortex COMPLETE."""
+    """Handle all response shapes from CORTEX.COMPLETE."""
     if raw is None:
         return ""
-
-    # Already a dict (Snowpark returns parsed VARIANT)
     if isinstance(raw, dict):
         choices = raw.get("choices", [])
         if choices:
             return choices[0].get("messages", choices[0].get("message", str(raw)))
         return str(raw)
-
-    # String — might be plain text or JSON
     if isinstance(raw, str):
         try:
             parsed = json.loads(raw)
@@ -107,9 +46,80 @@ def _extract_text(raw: Any) -> str:
             return raw
         except json.JSONDecodeError:
             return raw
-
     return str(raw)
 
 
-# Singleton — reused across all agents to avoid re-importing
-cortex_llm = SnowflakeCortexLLM(model_name="llama3.1-70b", temperature=0.0)
+class _SnowflakeCortexHandler(CustomLLM):
+    """LiteLLM custom handler -> SNOWFLAKE.CORTEX.COMPLETE."""
+
+    def completion(self, model: str, messages: list, **kwargs: Any) -> ModelResponse:
+        model_name = model.split("/")[-1] if "/" in model else "llama3.1-70b"
+        conn = get_connection()
+        cur = None
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT SNOWFLAKE.CORTEX.COMPLETE(%s, %s) AS response",
+                (model_name, json.dumps(messages)),
+            )
+            row = cur.fetchone()
+            raw = row[0] if row else ""
+        finally:
+            if cur:
+                cur.close()
+            conn.close()
+        text = _extract_text(raw)
+        return ModelResponse(
+            choices=[Choices(message=Message(content=text, role="assistant"), finish_reason="stop", index=0)],
+            model=model,
+            usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        )
+
+    def streaming(self, model: str, messages: list, **kwargs: Any) -> Iterator:
+        yield self.completion(model=model, messages=messages, **kwargs)
+
+
+_cortex_handler = _SnowflakeCortexHandler()
+litellm.custom_provider_map = [
+    {"provider": "snowflake-cortex", "custom_handler": _cortex_handler}
+]
+litellm.set_verbose = False
+
+
+# ── Auto-select LLM ───────────────────────────────────────────────────────────
+
+def _make_llm() -> LLM:
+    """Pick the best available LLM in priority order."""
+
+    # Option 1: Snowflake Cortex (only if explicitly enabled)
+    if os.getenv("SNOWFLAKE_CORTEX_ENABLED", "").lower() == "true":
+        print("[LLM] Using Snowflake Cortex llama3.1-70b")
+        return LLM(model="snowflake-cortex/llama3.1-70b", temperature=0.0)
+
+    # Option 2: Groq (free -- get key at console.groq.com)
+    groq_key = os.getenv("GROQ_API_KEY")
+    if groq_key:
+        print("[LLM] Using Groq llama-3.1-70b-versatile (free)")
+        return LLM(
+            model="groq/llama-3.1-70b-versatile",
+            api_key=groq_key,
+            temperature=0.0,
+        )
+
+    # Option 3: OpenAI
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if openai_key:
+        print("[LLM] Using OpenAI gpt-4o-mini")
+        return LLM(model="gpt-4o-mini", api_key=openai_key, temperature=0.0)
+
+    raise EnvironmentError(
+        "\n\n[LLM] No LLM configured!\n"
+        "  Option A (free): Get a Groq key at https://console.groq.com\n"
+        "                   then add GROQ_API_KEY=... to your .env\n"
+        "  Option B: Add OPENAI_API_KEY=... to your .env\n"
+        "  Option C: Set SNOWFLAKE_CORTEX_ENABLED=true if your account supports it\n"
+    )
+
+
+# Singleton -- all agents import this
+cortex_llm = _make_llm()
