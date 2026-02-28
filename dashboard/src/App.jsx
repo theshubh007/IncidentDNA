@@ -13,6 +13,7 @@ import RunbooksPage from './pages/RunbooksPage';
 import PostmortemsPage from './pages/PostmortemsPage';
 import AuditPage from './pages/AuditPage';
 import SettingsPage from './pages/SettingsPage';
+import RepositoryPage from './pages/RepositoryPage';
 
 function AppShell() {
   const { sidebarCollapsed } = useApp();
@@ -32,6 +33,7 @@ function AppShell() {
             <Route path="/postmortems" element={<PostmortemsPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/repository" element={<RepositoryPage />} />
           </Routes>
         </div>
       </main>

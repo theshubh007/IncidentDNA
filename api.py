@@ -12,6 +12,8 @@ import os
 import json
 import uuid
 import asyncio
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 from typing import Any
 from contextlib import asynccontextmanager
@@ -840,6 +842,196 @@ async def websocket_endpoint(ws: WebSocket):
                 await ws.send_text("pong")
     except WebSocketDisconnect:
         ws_manager.disconnect(ws)
+
+
+# ── Repository Info (live from GitHub API) ────────────────────────────────────
+
+_repo_cache: dict = {}
+_repo_cache_ts: float = 0.0
+
+def _github_api(path: str) -> Any:
+    """Fetch from GitHub public API with caching."""
+    url = f"https://api.github.com{path}"
+    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "IncidentDNA"})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            return json.loads(resp.read().decode())
+    except Exception as e:
+        print(f"[API] GitHub API error for {path}: {e}")
+        return None
+
+@app.get("/api/v1/repo")
+def get_repo_info():
+    """Dynamically fetch repo details, recent commits, languages, and contributors from GitHub."""
+    import time
+    global _repo_cache, _repo_cache_ts
+
+    # Cache for 60s to avoid rate limits
+    if _repo_cache and (time.time() - _repo_cache_ts) < 60:
+        return _repo_cache
+
+    repo_slug = os.getenv("GITHUB_REPO", "theshubh007/FortressAI_AI_Agent_Security_Platform")
+
+    # Parallel-ish fetches (sequential but fast)
+    repo_data = _github_api(f"/repos/{repo_slug}") or {}
+    commits = _github_api(f"/repos/{repo_slug}/commits?per_page=10") or []
+    languages = _github_api(f"/repos/{repo_slug}/languages") or {}
+    contributors = _github_api(f"/repos/{repo_slug}/contributors?per_page=10") or []
+    contents = _github_api(f"/repos/{repo_slug}/contents") or []
+
+    # Build file tree (top-level)
+    file_tree = []
+    for item in (contents if isinstance(contents, list) else []):
+        file_tree.append({
+            "name": item.get("name", ""),
+            "type": item.get("type", "file"),
+            "size": item.get("size", 0),
+            "path": item.get("path", ""),
+        })
+
+    # Build recent commits
+    recent_commits = []
+    for c in commits[:10]:
+        cm = c.get("commit", {})
+        recent_commits.append({
+            "sha": c.get("sha", "")[:7],
+            "message": cm.get("message", "").split("\n")[0][:120],
+            "author": cm.get("author", {}).get("name", "Unknown"),
+            "date": cm.get("author", {}).get("date", ""),
+            "avatar": (c.get("author") or {}).get("avatar_url", ""),
+        })
+
+    # Build contributors
+    contribs = []
+    for ct in contributors[:10]:
+        contribs.append({
+            "login": ct.get("login", ""),
+            "avatar": ct.get("avatar_url", ""),
+            "contributions": ct.get("contributions", 0),
+            "url": ct.get("html_url", ""),
+        })
+
+    # Total language bytes for percentage calculation
+    total_lang = sum(languages.values()) if languages else 1
+
+    result = {
+        "name": repo_data.get("name", repo_slug.split("/")[-1]),
+        "fullName": repo_data.get("full_name", repo_slug),
+        "description": repo_data.get("description", ""),
+        "url": repo_data.get("html_url", f"https://github.com/{repo_slug}"),
+        "defaultBranch": repo_data.get("default_branch", "main"),
+        "stars": repo_data.get("stargazers_count", 0),
+        "forks": repo_data.get("forks_count", 0),
+        "openIssues": repo_data.get("open_issues_count", 0),
+        "watchers": repo_data.get("watchers_count", 0),
+        "size": repo_data.get("size", 0),
+        "createdAt": repo_data.get("created_at", ""),
+        "updatedAt": repo_data.get("updated_at", ""),
+        "pushedAt": repo_data.get("pushed_at", ""),
+        "visibility": repo_data.get("visibility", "public"),
+        "languages": {k: round(v / total_lang * 100, 1) for k, v in languages.items()},
+        "recentCommits": recent_commits,
+        "contributors": contribs,
+        "fileTree": sorted(file_tree, key=lambda x: (0 if x["type"] == "dir" else 1, x["name"])),
+        "topics": repo_data.get("topics", []),
+    }
+
+    _repo_cache = result
+    _repo_cache_ts = time.time()
+    return result
+
+
+@app.get("/api/v1/repo/features")
+def get_repo_features():
+    """Return IncidentDNA platform features derived from live system state."""
+    # Pull live counts from Snowflake
+    incident_count = 0
+    action_count = 0
+    decision_count = 0
+    try:
+        rows = _sf("SELECT COUNT(*) AS cnt FROM AI.INCIDENT_HISTORY")
+        incident_count = int(rows[0].get("CNT", 0)) if rows else 0
+        rows2 = _sf("SELECT COUNT(*) AS cnt FROM AI.ACTIONS")
+        action_count = int(rows2[0].get("CNT", 0)) if rows2 else 0
+        rows3 = _sf("SELECT COUNT(*) AS cnt FROM AI.DECISIONS")
+        decision_count = int(rows3[0].get("CNT", 0)) if rows3 else 0
+    except Exception:
+        pass
+
+    auto_fix = os.getenv("AUTO_FIX_ENABLED", "false") == "true"
+    demo_mode = os.getenv("DEMO_MODE", "false") == "true"
+    threshold = float(os.getenv("AUTO_FIX_CONFIDENCE_THRESHOLD", "0.90"))
+    whitelist = [s.strip() for s in os.getenv("AUTO_FIX_WHITELIST", "").split(",") if s.strip()]
+
+    return {
+        "platform": "IncidentDNA",
+        "tagline": "Autonomous Incident Detection, Investigation & Resolution",
+        "features": [
+            {
+                "id": "multi-agent",
+                "title": "Multi-Agent AI Pipeline",
+                "description": "4 specialized AI agents (Detector, Investigator, Fix Advisor, Validator) orchestrated in a debate loop for high-confidence decisions.",
+                "status": "active",
+                "stats": f"{decision_count} decisions made",
+            },
+            {
+                "id": "snowflake-cortex",
+                "title": "Snowflake Cortex LLM",
+                "description": "All AI inference runs natively inside Snowflake using Cortex — zero external API keys needed for LLM calls.",
+                "status": "active",
+                "stats": "claude-sonnet-4-5 via Cortex",
+            },
+            {
+                "id": "threshold-engine",
+                "title": "Autonomous Resolution Threshold Engine",
+                "description": f"7-rule decision engine auto-resolves incidents when confidence >= {threshold:.0%}, risk is LOW, and fix is proven.",
+                "status": "active" if auto_fix else "disabled",
+                "stats": f"Threshold: {threshold:.0%} | Whitelist: {', '.join(whitelist) if whitelist else 'all'}",
+            },
+            {
+                "id": "composio-actions",
+                "title": "Slack & GitHub Integration",
+                "description": "Automated Slack alerts (auto-resolved / escalation bands) and GitHub issue creation via Composio SDK.",
+                "status": "active",
+                "stats": f"{action_count} actions executed",
+            },
+            {
+                "id": "incident-dna",
+                "title": "Incident DNA Storage",
+                "description": "Every incident is stored with full context — root cause, fix, MTTR, confidence — enabling pattern matching for future incidents.",
+                "status": "active",
+                "stats": f"{incident_count} incidents in DNA",
+            },
+            {
+                "id": "demo-mode",
+                "title": "Demo Mode",
+                "description": "Injects synthetic anomalous metrics and simulates fix execution for live demonstrations.",
+                "status": "active" if demo_mode else "standby",
+                "stats": "DEMO_MODE=" + ("true" if demo_mode else "false"),
+            },
+            {
+                "id": "vector-search",
+                "title": "Cortex Vector Search",
+                "description": "Semantic search across runbooks and past incidents using Snowflake's built-in embedding + cosine similarity.",
+                "status": "active",
+                "stats": "e5-base-v2 embeddings",
+            },
+            {
+                "id": "ci-trigger",
+                "title": "CI Pipeline Trigger",
+                "description": "GitHub push events automatically trigger the full incident detection pipeline — fully autonomous, zero human intervention.",
+                "status": "active",
+                "stats": "GitHub → Snowflake → Agents → Slack/GitHub",
+            },
+        ],
+        "architecture": {
+            "agents": ["Ag1 Detector", "Ag2 Investigator", "Ag3 Fix Advisor", "Ag5 Validator"],
+            "dataStore": "Snowflake (INCIDENTDNA)",
+            "llm": "Snowflake Cortex (claude-sonnet-4-5)",
+            "integrations": ["Composio SDK", "Slack", "GitHub"],
+            "pipeline": "GitHub Push → Deploy Event → Metric Injection → Anomaly Detection → Agent Pipeline → Threshold Engine → Auto-Resolve / Escalate",
+        },
+    }
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
