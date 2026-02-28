@@ -1,3 +1,5 @@
+import json
+
 from crewai.tools import BaseTool
 from utils.snowflake_conn import run_query
 
@@ -13,12 +15,17 @@ class SearchRunbooksTool(BaseTool):
 
     def _run(self, query: str) -> str:
         try:
+            payload = json.dumps({
+                "query": query.strip(),
+                "columns": ["title", "service_name", "symptom", "root_cause", "fix_steps"],
+                "limit": 3,
+            })
             results = run_query(
                 """SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
                   'INCIDENTDNA.RAW.RUNBOOK_SEARCH',
                   %s
                 ) AS results""",
-                (query.strip(),),
+                (payload,),
             )
             if results and results[0].get("RESULTS"):
                 return str(results[0]["RESULTS"])

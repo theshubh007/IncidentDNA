@@ -23,8 +23,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Fixed user ID for IncidentDNA agent
-COMPOSIO_USER_ID = "incidentdna-agent"
+# Fixed user ID for IncidentDNA agent.
+# This must match the runtime user used by the trigger listener and action layer.
+COMPOSIO_USER_ID = "pg-test-a6c32032-f3c5-43d2-9090-e16ffbd46f0d"
 
 
 def get_client():
@@ -50,15 +51,20 @@ def check_connections():
     client = get_client()
     
     try:
-        # List connected apps for our user
-        connections = client.connected_accounts.get(user_id=COMPOSIO_USER_ID)
+        # List connected apps for our user (current SDK uses list(..., user_ids=[...]))
+        response = client.connected_accounts.list(
+            user_ids=[COMPOSIO_USER_ID],
+            limit=20,
+        )
+        connections = getattr(response, "items", []) or []
         
         github_connected = False
         slack_connected = False
         
         for conn in connections:
-            app_name = conn.get("appName", "").lower()
-            status = conn.get("status", "unknown")
+            toolkit = getattr(getattr(conn, "toolkit", None), "slug", "")
+            app_name = (toolkit or "").lower()
+            status = getattr(conn, "status", "unknown")
             print(f"  • {app_name}: {status}")
             if "github" in app_name and status == "ACTIVE":
                 github_connected = True
@@ -135,28 +141,33 @@ def setup_slack():
 
 
 def test_github():
-    """Test GitHub integration by listing available actions."""
+    """Test GitHub integration by listing available tools."""
     print("\n🧪 Testing GitHub integration...")
     client = get_client()
     
     try:
-        # Test by getting available GitHub actions
-        actions = client.actions.get(
-            app_name="github",
+        tools = client.tools.get(
             user_id=COMPOSIO_USER_ID,
+            toolkits=["github"],
+            limit=200,
         )
         
         issue_action = None
-        for action in actions:
-            if "create" in action.get("name", "").lower() and "issue" in action.get("name", "").lower():
-                issue_action = action
+        for tool in tools:
+            name = (
+                tool.get("function", {}).get("name", "")
+                if isinstance(tool, dict)
+                else str(tool)
+            )
+            if "GITHUB_CREATE_AN_ISSUE" in name:
+                issue_action = name
                 break
         
         if issue_action:
-            print(f"✅ GitHub connected - found action: {issue_action.get('name')}")
+            print(f"✅ GitHub connected - found tool: {issue_action}")
             return True
         else:
-            print("⚠️  GitHub connected but GITHUB_CREATE_AN_ISSUE action not found")
+            print("⚠️  GitHub connected but GITHUB_CREATE_AN_ISSUE tool not found")
             return False
             
     except Exception as e:
@@ -165,28 +176,33 @@ def test_github():
 
 
 def test_slack():
-    """Test Slack integration by listing available actions."""
+    """Test Slack integration by listing available tools."""
     print("\n🧪 Testing Slack integration...")
     client = get_client()
     
     try:
-        # Test by getting available Slack actions
-        actions = client.actions.get(
-            app_name="slack",
+        tools = client.tools.get(
             user_id=COMPOSIO_USER_ID,
+            toolkits=["slack"],
+            limit=200,
         )
         
         post_action = None
-        for action in actions:
-            if "post" in action.get("name", "").lower() and "message" in action.get("name", "").lower():
-                post_action = action
+        for tool in tools:
+            name = (
+                tool.get("function", {}).get("name", "")
+                if isinstance(tool, dict)
+                else str(tool)
+            )
+            if "SLACK_SEND_MESSAGE" in name:
+                post_action = name
                 break
         
         if post_action:
-            print(f"✅ Slack connected - found action: {post_action.get('name')}")
+            print(f"✅ Slack connected - found tool: {post_action}")
             return True
         else:
-            print("⚠️  Slack connected but SLACKBOT_CHAT_POST_MESSAGE action not found")
+            print("⚠️  Slack connected but SLACK_SEND_MESSAGE tool not found")
             return False
             
     except Exception as e:
@@ -199,16 +215,17 @@ def test_send_slack_message():
     print("\n🧪 Sending test Slack message...")
     client = get_client()
     
-    channel = os.getenv("SLACK_CHANNEL", "#incidents")
+    channel = os.getenv("SLACK_CHANNEL", "#incidents").lstrip("#")
     
     try:
-        result = client.actions.execute(
-            action_name="SLACKBOT_CHAT_POST_MESSAGE",
-            params={
+        client.tools.execute(
+            "SLACK_SEND_MESSAGE",
+            {
                 "channel": channel,
-                "text": "🧪 *IncidentDNA Test Message*\n\nIf you see this, Slack integration is working correctly!",
+                "markdown_text": "🧪 *IncidentDNA Test Message*\n\nIf you see this, Slack integration is working correctly!",
             },
             user_id=COMPOSIO_USER_ID,
+            dangerously_skip_version_check=True,
         )
         print(f"✅ Test message sent to {channel}")
         return True

@@ -157,7 +157,7 @@ def post_slack_alert(
 
     _record_action(event_id, "SLACK_ALERT", key, payload)
     try:
-        _execute_with_retry("SLACKBOT_CHAT_POST_MESSAGE", payload)
+        _execute_with_retry("SLACK_SEND_MESSAGE", payload)
         _update_status(key, "SENT")
         return "SENT"
     except Exception as e:
