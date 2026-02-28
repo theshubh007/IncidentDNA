@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../hooks/useAppContext';
+import { fetchRepoInfo } from '../services/api';
 import {
     LayoutDashboard, AlertTriangle, Rocket, Server,
     BookOpen, FileText, ScrollText, Settings,
@@ -22,6 +24,11 @@ export default function Sidebar() {
     const { sidebarCollapsed, setSidebarCollapsed, simulationState } = useApp();
     const location = useLocation();
     const navigate = useNavigate();
+    const [repoName, setRepoName] = useState('FortressAI');
+
+    useEffect(() => {
+        fetchRepoInfo().then(r => { if (r?.name) setRepoName(r.name); });
+    }, []);
 
     const pipelineStatus = simulationState ? 'degraded' : 'healthy';
     const pipelineLabel = simulationState ? 'Processing' : 'Pipeline Healthy';
@@ -50,8 +57,8 @@ export default function Sidebar() {
                         <Shield size={16} />
                     </div>
                     <div className="sidebar-brand">
-                        <h1>ReleaseShield</h1>
-                        <span>Autonomous Safety</span>
+                        <h1>{repoName}</h1>
+                        <span>IncidentDNA Platform</span>
                     </div>
                 </div>
 

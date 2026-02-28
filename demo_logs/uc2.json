@@ -1,0 +1,104 @@
+{
+  "use_case": 2,
+  "name": "Silent Data Corruption",
+  "expected_decision": "HUMAN_ESCALATION",
+  "expected_rule": "RULE_1",
+  "actual_decision": "HUMAN_ESCALATION",
+  "actual_rule": "RULE_1",
+  "passed": true,
+  "elapsed_seconds": 199.87,
+  "event": {
+    "event_id": "demo-uc2-15d37b0b",
+    "service": "order-service",
+    "anomaly_type": "silent_data_corruption",
+    "incident_type": "DATA_INTEGRITY",
+    "severity": "P1",
+    "details": {
+      "deploy_id": "DPL-20241126-0019",
+      "affected_records": 48302,
+      "revenue_impact_pct": 10,
+      "date_range": "Nov 26-29",
+      "source": "demo_runner"
+    }
+  },
+  "result": {
+    "event_id": "demo-uc2-15d37b0b",
+    "severity": "P1",
+    "root_cause": "Compound failure caused by simultaneous deployment of two configuration changes: (1) connection pool reduced from 100 to 50 connections, pushing utilization to 96% and causing connection starvation (database_connection_errors z-score 3.2, query_timeout_count z-score 2.9), and (2) transaction isolation level changed to READ_UNCOMMITTED. The pool reduction created resource exhaustion and retry storms (retry_attempt_count z-score 1.3), while the isolation level change allowed dirty reads during these retries, resulting in 48,302 corrupted records (data_validation_failures z-score 4.8). This exact scenario was documented in past incident INC-1923 with 0.94 similarity, which showed that small pool + aggressive timeouts + READ_UNCOMMITTED isolation causes connection errors, query timeouts, and cascading data corruption failures. The pool constraint is the primary trigger, with isolation level acting as an amplifier.",
+    "fix": "rollback",
+    "fix_options": [
+      {
+        "rank": 1,
+        "title": "Full Deployment Rollback with Data Repair",
+        "commands": [
+          "kubectl rollout undo deployment/order-service",
+          "kubectl rollout status deployment/order-service --timeout=3m",
+          "kubectl set env deployment/order-service DB_POOL_SIZE=100 DB_ISOLATION_LEVEL=READ_COMMITTED",
+          "sleep 60 && kubectl logs -l app=order-service --tail=100 | grep -i 'connection\\|error'",
+          "kubectl create job --from=cronjob/data-repair repair-$(date +%s)",
+          "kubectl wait --for=condition=complete --timeout=10m job/repair-$(date +%s)"
+        ],
+        "estimated_time": "12 minutes",
+        "risk_level": "LOW",
+        "rollback": "If rollback causes issues: kubectl rollout undo deployment/order-service (reverts to problematic version). Then apply fix option 2 instead."
+      },
+      {
+        "rank": 2,
+        "title": "Targeted Configuration Fix Without Full Rollback",
+        "commands": [
+          "kubectl set env deployment/order-service DB_POOL_SIZE=100",
+          "kubectl set env deployment/order-service DB_ISOLATION_LEVEL=READ_COMMITTED",
+          "kubectl rollout restart deployment/order-service",
+          "kubectl rollout status deployment/order-service --timeout=3m",
+          "sleep 120 && curl -s http://order-service/health | jq '.database.pool_utilization'",
+          "kubectl apply -f jobs/data-validation-repair.yaml",
+          "kubectl logs -f job/data-validation-repair"
+        ],
+        "estimated_time": "15 minutes",
+        "risk_level": "MEDIUM",
+        "rollback": "Revert configuration: kubectl set env deployment/order-service DB_POOL_SIZE=50 DB_ISOLATION_LEVEL=READ_UNCOMMITTED && kubectl rollout restart deployment/order-service"
+      },
+      {
+        "rank": 3,
+        "title": "Gradual Pool Increase with Monitoring",
+        "commands": [
+          "kubectl set env deployment/order-service DB_ISOLATION_LEVEL=READ_COMMITTED",
+          "kubectl rollout restart deployment/order-service",
+          "sleep 60 && kubectl set env deployment/order-service DB_POOL_SIZE=75",
+          "sleep 120 && kubectl top pods -l app=order-service",
+          "kubectl set env deployment/order-service DB_POOL_SIZE=100",
+          "kubectl exec -it deployment/order-service -- psql -c 'SELECT COUNT(*) FROM orders WHERE validation_status=\\'FAILED\\' AND updated_at > NOW() - INTERVAL \\'1 hour\\''",
+          "python scripts/repair_corrupted_orders.py --batch-size 1000 --dry-run=false"
+        ],
+        "estimated_time": "20 minutes",
+        "risk_level": "MEDIUM",
+        "rollback": "Reduce pool incrementally: kubectl set env deployment/order-service DB_POOL_SIZE=75, wait 2 min, then DB_POOL_SIZE=50. Revert isolation: kubectl set env deployment/order-service DB_ISOLATION_LEVEL=READ_UNCOMMITTED"
+      }
+    ],
+    "confidence": 0.8,
+    "approved": false,
+    "debate_rounds": 2,
+    "blast_radius": [
+      "payment-service",
+      "inventory-service",
+      "notification-service"
+    ],
+    "evidence": [
+      "runbook",
+      "past_incident",
+      "metrics"
+    ],
+    "slack": "FALLBACK_LOGGED (Composio unavailable: cannot import name 'Action' from 'composio' (/Users/premshah/Master/Hackathon/ReleaseShield/IncidentDNA/.venv/lib/python3.13/site-packages/composio/__init__.py))",
+    "github": "FALLBACK_LOGGED (Composio unavailable: cannot import name 'Action' from 'composio' (/Users/premshah/Master/Hackathon/ReleaseShield/IncidentDNA/.venv/lib/python3.13/site-packages/composio/__init__.py))",
+    "threshold_decision": "HUMAN_ESCALATION",
+    "rule_applied": "RULE_1",
+    "rule_description": "Hard block: DATA_INTEGRITY incidents always require human review",
+    "urgency": "IMMEDIATE",
+    "incident_type": "DATA_INTEGRITY",
+    "auto_fixed": false,
+    "fix_proven": false,
+    "risk_level": "LOW",
+    "mttr_seconds": 181
+  },
+  "timestamp": "2026-02-28T22:24:00.595175+00:00"
+}

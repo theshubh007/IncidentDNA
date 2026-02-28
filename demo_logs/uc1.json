@@ -1,0 +1,105 @@
+{
+  "use_case": 1,
+  "name": "DB Connection Pool Exhaustion",
+  "expected_decision": "AUTO_RESOLVE",
+  "expected_rule": "RULE_4",
+  "actual_decision": "AUTO_RESOLVE",
+  "actual_rule": "RULE_4",
+  "passed": true,
+  "elapsed_seconds": 263.31,
+  "event": {
+    "event_id": "demo-uc1-8a7e8b3b",
+    "service": "payment-service",
+    "anomaly_type": "db_pool_exhaustion",
+    "incident_type": "PERFORMANCE",
+    "severity": "P1",
+    "details": {
+      "deploy_id": "DPL-20241129-0042",
+      "metric_spike": "connection_pool_usage",
+      "current_value": 48,
+      "baseline": 20,
+      "source": "demo_runner",
+      "confidence_override": 0.93,
+      "approved_override": true,
+      "blast_radius_override": 2,
+      "fix_proven_override": true,
+      "risk_level_override": "LOW"
+    }
+  },
+  "result": {
+    "event_id": "demo-uc1-8a7e8b3b",
+    "severity": "P1",
+    "root_cause": "Database migration #445 deployed at 14:15 (3 minutes before incident start) added payment_audit_log table without proper indexes, causing full table scans and extreme query performance degradation (query_duration z-score 19.8, lock_wait_time 15.4, deadlocks 12.3, table_scan_rate 10.9, cache_hit_ratio dropped 51%). This database bottleneck caused cascading connection pool exhaustion across 4 services (payment-service, order-service, inventory-service, user-service) as all connection pools filled with threads waiting for slow database queries. Payment-service deployment at 14:23 occurred 8 minutes AFTER incident start and is not the root cause. Memory usage z-score of only 0.8 rules out application connection leak.",
+    "fix": "rollback",
+    "fix_options": [
+      {
+        "rank": 1,
+        "title": "Rollback Database Migration #445",
+        "commands": [
+          "kubectl exec -it db-migration-pod -- flyway info",
+          "kubectl exec -it db-migration-pod -- flyway undo",
+          "kubectl exec -it db-migration-pod -- flyway validate",
+          "Monitor database query_duration and connection_pool_usage metrics for 5 minutes"
+        ],
+        "estimated_time": "8 minutes",
+        "risk_level": "LOW",
+        "rollback": "Redeploy migration #445: kubectl exec -it db-migration-pod -- flyway migrate"
+      },
+      {
+        "rank": 2,
+        "title": "Add Missing Indexes to payment_audit_log Table",
+        "commands": [
+          "kubectl exec -it postgres-primary-0 -- psql -c \"SELECT query, avg_exec_time FROM pg_stat_statements WHERE query LIKE '%payment_audit_log%' ORDER BY avg_exec_time DESC LIMIT 5\"",
+          "kubectl exec -it postgres-primary-0 -- psql -c \"CREATE INDEX CONCURRENTLY idx_payment_audit_log_timestamp ON payment_audit_log(created_at)\"",
+          "kubectl exec -it postgres-primary-0 -- psql -c \"CREATE INDEX CONCURRENTLY idx_payment_audit_log_payment_id ON payment_audit_log(payment_id)\"",
+          "kubectl exec -it postgres-primary-0 -- psql -c \"ANALYZE payment_audit_log\"",
+          "Monitor query_duration and table_scan_rate metrics for 5 minutes"
+        ],
+        "estimated_time": "12 minutes",
+        "risk_level": "MEDIUM",
+        "rollback": "DROP INDEX CONCURRENTLY idx_payment_audit_log_timestamp; DROP INDEX CONCURRENTLY idx_payment_audit_log_payment_id"
+      },
+      {
+        "rank": 3,
+        "title": "Rollback Migration + Restart All Affected Services",
+        "commands": [
+          "kubectl exec -it db-migration-pod -- flyway undo",
+          "kubectl exec -it db-migration-pod -- flyway validate",
+          "kubectl rollout restart deployment/payment-service",
+          "kubectl rollout restart deployment/order-service",
+          "kubectl rollout restart deployment/inventory-service",
+          "kubectl rollout restart deployment/user-service",
+          "kubectl rollout status deployment/payment-service deployment/order-service deployment/inventory-service deployment/user-service",
+          "Monitor connection_pool_usage and query_duration across all 4 services for 5 minutes"
+        ],
+        "estimated_time": "15 minutes",
+        "risk_level": "MEDIUM",
+        "rollback": "Redeploy migration #445 and rollback service deployments to previous versions if needed"
+      }
+    ],
+    "confidence": 0.95,
+    "approved": true,
+    "debate_rounds": 1,
+    "blast_radius": [
+      "checkout-service",
+      "order-service"
+    ],
+    "evidence": [
+      "runbook",
+      "past_incident",
+      "metrics"
+    ],
+    "slack": "FALLBACK_LOGGED (Composio unavailable: cannot import name 'Action' from 'composio' (/Users/premshah/Master/Hackathon/ReleaseShield/IncidentDNA/.venv/lib/python3.13/site-packages/composio/__init__.py))",
+    "github": "FALLBACK_LOGGED (Composio unavailable: cannot import name 'Action' from 'composio' (/Users/premshah/Master/Hackathon/ReleaseShield/IncidentDNA/.venv/lib/python3.13/site-packages/composio/__init__.py))",
+    "threshold_decision": "AUTO_RESOLVE",
+    "rule_applied": "RULE_4",
+    "rule_description": "Confidence 93% >= 90%, risk LOW, fix proven, service whitelisted -> auto-resolve",
+    "urgency": null,
+    "incident_type": "PERFORMANCE",
+    "auto_fixed": true,
+    "fix_proven": true,
+    "risk_level": "LOW",
+    "mttr_seconds": 236
+  },
+  "timestamp": "2026-02-28T22:20:40.726827+00:00"
+}

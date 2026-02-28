@@ -21,9 +21,9 @@ describe('Sidebar Component', () => {
         expect(screen.getByText('Settings')).toBeInTheDocument();
     });
 
-    it('renders the ReleaseShield brand name', () => {
+    it('renders the brand name', () => {
         renderWithProviders(<Sidebar />);
-        expect(screen.getByText('ReleaseShield')).toBeInTheDocument();
+        expect(screen.getByText('FortressAI')).toBeInTheDocument();
     });
 
     it('renders the pipeline health status', () => {
@@ -33,7 +33,7 @@ describe('Sidebar Component', () => {
 
     it('has unique IDs for each nav item', () => {
         renderWithProviders(<Sidebar />);
-        const navIds = ['nav-overview', 'nav-incidents', 'nav-releases', 'nav-services', 'nav-runbooks', 'nav-postmortems', 'nav-audit', 'nav-settings'];
+        const navIds = ['nav-overview', 'nav-incidents', 'nav-releases', 'nav-services', 'nav-runbooks', 'nav-postmortems', 'nav-audit', 'nav-repository', 'nav-settings'];
         navIds.forEach(id => {
             expect(document.getElementById(id)).toBeInTheDocument();
         });

@@ -1,0 +1,105 @@
+{
+  "use_case": 4,
+  "name": "Credential Stuffing Attack",
+  "expected_decision": "HUMAN_ESCALATION",
+  "expected_rule": "RULE_1",
+  "actual_decision": "HUMAN_ESCALATION",
+  "actual_rule": "RULE_1",
+  "passed": true,
+  "elapsed_seconds": 191.04,
+  "event": {
+    "event_id": "demo-uc4-7c542205",
+    "service": "user-service",
+    "anomaly_type": "credential_stuffing",
+    "incident_type": "SECURITY",
+    "severity": "P1",
+    "details": {
+      "deploy_id": "DPL-20241215-SEC-0003",
+      "failed_auth_attempts": 48291,
+      "unique_ips": 11402,
+      "success_rate_pct": 2.1,
+      "potentially_compromised": 1014,
+      "source": "demo_runner"
+    }
+  },
+  "result": {
+    "event_id": "demo-uc4-7c542205",
+    "severity": "P1",
+    "root_cause": "Database max_connections parameter was reduced from 500 to 200 at 14:22:45, causing connection pool exhaustion (198/200 connections in use, 99% saturation). This prevented authentication queries from completing, manifesting as 48,291 failed auth attempts. Database connection errors (z_score 15.2) started 27 seconds BEFORE the failed auth spike, confirming database misconfiguration as root cause, not credential stuffing attack. Pattern matches past incidents INC-2847, INC-2234, and INC-1923 exactly.",
+    "fix": "fix_config",
+    "fix_options": [
+      {
+        "rank": 1,
+        "title": "Immediate revert max_connections to 500 (proven fix from INC-2847)",
+        "commands": [
+          "psql -h <db-host> -U postgres -c \"ALTER SYSTEM SET max_connections = 500;\"",
+          "psql -h <db-host> -U postgres -c \"SELECT pg_reload_conf();\"",
+          "psql -h <db-host> -U postgres -c \"SELECT name, setting FROM pg_settings WHERE name = 'max_connections';\"",
+          "psql -h <db-host> -U postgres -c \"SELECT count(*) as active_connections FROM pg_stat_activity;\""
+        ],
+        "estimated_time": "3 minutes",
+        "risk_level": "LOW",
+        "rollback": "ALTER SYSTEM SET max_connections = 200; SELECT pg_reload_conf(); (reverts to previous misconfigured value if needed)"
+      },
+      {
+        "rank": 2,
+        "title": "Gradual increase max_connections with monitoring (safer approach)",
+        "commands": [
+          "psql -h <db-host> -U postgres -c \"ALTER SYSTEM SET max_connections = 300;\"",
+          "psql -h <db-host> -U postgres -c \"SELECT pg_reload_conf();\"",
+          "sleep 30 && psql -h <db-host> -U postgres -c \"SELECT count(*) FROM pg_stat_activity; SELECT * FROM pg_stat_database WHERE datname='userdb';\"",
+          "psql -h <db-host> -U postgres -c \"ALTER SYSTEM SET max_connections = 400;\"",
+          "psql -h <db-host> -U postgres -c \"SELECT pg_reload_conf();\"",
+          "sleep 30 && psql -h <db-host> -U postgres -c \"SELECT count(*) FROM pg_stat_activity;\"",
+          "psql -h <db-host> -U postgres -c \"ALTER SYSTEM SET max_connections = 500;\"",
+          "psql -h <db-host> -U postgres -c \"SELECT pg_reload_conf();\"",
+          "psql -h <db-host> -U postgres -c \"SELECT name, setting FROM pg_settings WHERE name = 'max_connections';\""
+        ],
+        "estimated_time": "5 minutes",
+        "risk_level": "LOW",
+        "rollback": "ALTER SYSTEM SET max_connections = 200; SELECT pg_reload_conf(); (step-by-step revert to any intermediate value if system resources show issues)"
+      },
+      {
+        "rank": 3,
+        "title": "Comprehensive fix with connection pooling optimization (INC-1923 approach)",
+        "commands": [
+          "psql -h <db-host> -U postgres -c \"ALTER SYSTEM SET max_connections = 600;\"",
+          "psql -h <db-host> -U postgres -c \"SELECT pg_reload_conf();\"",
+          "psql -h <db-host> -U postgres -c \"SELECT name, setting FROM pg_settings WHERE name = 'max_connections';\"",
+          "kubectl get pods -n user-service -o wide | grep user-service",
+          "kubectl set env deployment/user-service -n user-service HIKARI_MAX_POOL_SIZE=150",
+          "kubectl rollout status deployment/user-service -n user-service --timeout=5m",
+          "psql -h <db-host> -U postgres -c \"SELECT count(*), state FROM pg_stat_activity GROUP BY state;\""
+        ],
+        "estimated_time": "8 minutes",
+        "risk_level": "MEDIUM",
+        "rollback": "kubectl set env deployment/user-service -n user-service HIKARI_MAX_POOL_SIZE=180; kubectl rollout undo deployment/user-service -n user-service; ALTER SYSTEM SET max_connections = 500; SELECT pg_reload_conf();"
+      }
+    ],
+    "confidence": 0.81,
+    "approved": false,
+    "debate_rounds": 2,
+    "blast_radius": [
+      "payment-service",
+      "notification-service",
+      "session-service"
+    ],
+    "evidence": [
+      "runbook",
+      "past_incident",
+      "metrics"
+    ],
+    "slack": "FALLBACK_LOGGED (Composio unavailable: cannot import name 'Action' from 'composio' (/Users/premshah/Master/Hackathon/ReleaseShield/IncidentDNA/.venv/lib/python3.13/site-packages/composio/__init__.py))",
+    "github": "FALLBACK_LOGGED (Composio unavailable: cannot import name 'Action' from 'composio' (/Users/premshah/Master/Hackathon/ReleaseShield/IncidentDNA/.venv/lib/python3.13/site-packages/composio/__init__.py))",
+    "threshold_decision": "HUMAN_ESCALATION",
+    "rule_applied": "RULE_1",
+    "rule_description": "Hard block: SECURITY incidents always require human review",
+    "urgency": "IMMEDIATE",
+    "incident_type": "SECURITY",
+    "auto_fixed": false,
+    "fix_proven": false,
+    "risk_level": "LOW",
+    "mttr_seconds": 171
+  },
+  "timestamp": "2026-02-28T22:30:57.176796+00:00"
+}

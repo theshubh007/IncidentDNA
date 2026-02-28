@@ -1,0 +1,114 @@
+{
+  "use_case": 3,
+  "name": "Cascading Microservice Failure",
+  "expected_decision": "HUMAN_ESCALATION",
+  "expected_rule": "RULE_3",
+  "actual_decision": "HUMAN_ESCALATION",
+  "actual_rule": "RULE_3",
+  "passed": true,
+  "elapsed_seconds": 225.54,
+  "event": {
+    "event_id": "demo-uc3-a47a3a78",
+    "service": "api-gateway",
+    "anomaly_type": "cascading_failure",
+    "incident_type": "AVAILABILITY",
+    "severity": "P1",
+    "details": {
+      "deploy_id": "DPL-20241210-0091",
+      "cascade_depth": 3,
+      "affected_services": [
+        "payment-service",
+        "order-service",
+        "notification-service",
+        "product-service",
+        "worker-service",
+        "api-gateway",
+        "search-service"
+      ],
+      "origin_service": "nlp-enrichment-svc",
+      "source": "demo_runner",
+      "approved_override": true,
+      "blast_radius_override": 7
+    }
+  },
+  "result": {
+    "event_id": "demo-uc3-a47a3a78",
+    "severity": "P1",
+    "root_cause": "Deployment v3.1.4 to nlp-enrichment-svc at 14:23:45 introduced thread deadlocks (23 detected, z-score 15.7) causing the service to hang with 156 stuck requests. This cascaded to api-gateway (89% upstream timeout rate, 498/500 threads blocked) and 6 downstream services. Database connection pool exhaustion in payment-service (67%), order-service (58%), and product-service (54%) is secondary - these services hold DB connections while blocked waiting on upstream calls through the deadlocked chain. Incident started 27 seconds post-deployment. Pattern matches past incident 'NLP Enrichment Service Deadlock After v2.3.1 Deploy' (0.94 similarity) which was resolved via rollback with 8min MTTR and automatic downstream recovery.",
+    "fix": "rollback",
+    "fix_options": [
+      {
+        "rank": 1,
+        "title": "Immediate Rollback of nlp-enrichment-svc to v3.1.3",
+        "commands": [
+          "kubectl rollout undo deployment/nlp-enrichment-svc -n production",
+          "kubectl rollout status deployment/nlp-enrichment-svc -n production --timeout=3m",
+          "kubectl exec -n production deployment/nlp-enrichment-svc -- jstack 1 | grep -c 'waiting to lock'",
+          "sleep 120 && kubectl get pods -n production -l app=api-gateway -o jsonpath='{.items[*].status.containerStatuses[*].ready}' | grep -c true"
+        ],
+        "estimated_time": "8 minutes",
+        "risk_level": "LOW",
+        "rollback": "If rollback causes issues, redeploy v3.1.4: kubectl rollout undo deployment/nlp-enrichment-svc -n production (this will undo the undo, returning to v3.1.4)"
+      },
+      {
+        "rank": 2,
+        "title": "Enable Circuit Breaker and Restart API Gateway",
+        "commands": [
+          "kubectl set env deployment/api-gateway -n production CIRCUIT_BREAKER_ENABLED=true UPSTREAM_TIMEOUT_MS=2000",
+          "kubectl rollout restart deployment/api-gateway -n production",
+          "kubectl rollout status deployment/api-gateway -n production --timeout=3m",
+          "kubectl exec -n production deployment/nlp-enrichment-svc -- curl -X POST localhost:8080/actuator/restart",
+          "kubectl rollout restart deployment/payment-service deployment/order-service deployment/product-service -n production"
+        ],
+        "estimated_time": "12 minutes",
+        "risk_level": "MEDIUM",
+        "rollback": "Disable circuit breaker: kubectl set env deployment/api-gateway -n production CIRCUIT_BREAKER_ENABLED=false UPSTREAM_TIMEOUT_MS=5000; kubectl rollout restart deployment/api-gateway -n production"
+      },
+      {
+        "rank": 3,
+        "title": "Force Restart All Affected Services and Clear Connections",
+        "commands": [
+          "kubectl rollout restart deployment/nlp-enrichment-svc -n production",
+          "kubectl rollout status deployment/nlp-enrichment-svc -n production --timeout=3m",
+          "kubectl exec -n production deployment/payment-service -- curl -X POST localhost:8080/admin/kill-long-transactions",
+          "kubectl exec -n production deployment/order-service -- curl -X POST localhost:8080/admin/kill-long-transactions",
+          "kubectl exec -n production deployment/product-service -- curl -X POST localhost:8080/admin/kill-long-transactions",
+          "kubectl rollout restart deployment/api-gateway deployment/payment-service deployment/order-service deployment/product-service -n production",
+          "kubectl rollout status deployment/api-gateway -n production --timeout=5m"
+        ],
+        "estimated_time": "15 minutes",
+        "risk_level": "HIGH",
+        "rollback": "This is a restart-based fix with no configuration changes. If issues persist, proceed with Option 1 (rollback). No specific rollback needed as no config was changed, but may cause brief service disruption during restarts."
+      }
+    ],
+    "confidence": 0.91,
+    "approved": true,
+    "debate_rounds": 1,
+    "blast_radius": [
+      "payment-service",
+      "order-service",
+      "notification-service",
+      "product-service",
+      "worker-service",
+      "search-service",
+      "nlp-enrichment-svc"
+    ],
+    "evidence": [
+      "runbook",
+      "past_incident",
+      "metrics"
+    ],
+    "slack": "FALLBACK_LOGGED (Composio unavailable: cannot import name 'Action' from 'composio' (/Users/premshah/Master/Hackathon/ReleaseShield/IncidentDNA/.venv/lib/python3.13/site-packages/composio/__init__.py))",
+    "github": "FALLBACK_LOGGED (Composio unavailable: cannot import name 'Action' from 'composio' (/Users/premshah/Master/Hackathon/ReleaseShield/IncidentDNA/.venv/lib/python3.13/site-packages/composio/__init__.py))",
+    "threshold_decision": "HUMAN_ESCALATION",
+    "rule_applied": "RULE_3",
+    "rule_description": "Blast radius too wide: 7 services affected (limit: 2)",
+    "urgency": "HIGH",
+    "incident_type": "AVAILABILITY",
+    "auto_fixed": false,
+    "fix_proven": false,
+    "risk_level": "LOW",
+    "mttr_seconds": 207
+  },
+  "timestamp": "2026-02-28T22:27:46.136165+00:00"
+}

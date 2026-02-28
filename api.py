@@ -57,6 +57,15 @@ executor = ThreadPoolExecutor(max_workers=2)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Pre-warm GitHub repo cache in background so first page load is instant
+    import threading
+    def _warm():
+        try:
+            get_repo_info()
+            print("[API] Repo cache pre-warmed")
+        except Exception as e:
+            print(f"[API] Repo cache warm failed (non-fatal): {e}")
+    threading.Thread(target=_warm, daemon=True).start()
     yield
     executor.shutdown(wait=False)
 
@@ -849,61 +858,79 @@ async def websocket_endpoint(ws: WebSocket):
 _repo_cache: dict = {}
 _repo_cache_ts: float = 0.0
 
-def _github_api(path: str) -> Any:
-    """Fetch from GitHub public API with caching."""
-    url = f"https://api.github.com{path}"
-    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "IncidentDNA"})
+def _composio_github(action_slug: str, params: dict) -> Any:
+    """Execute a GitHub action through Composio (authenticated, no rate-limit issues)."""
     try:
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            return json.loads(resp.read().decode())
+        from composio import Composio
+        api_key = os.getenv("COMPOSIO_API_KEY")
+        user_id = "pg-test-a6c32032-f3c5-43d2-9090-e16ffbd46f0d"
+        if not api_key:
+            return None
+        client = Composio(api_key=api_key)
+        result = client.tools.execute(
+            slug=action_slug,
+            arguments=params,
+            user_id=user_id,
+            dangerously_skip_version_check=True,
+        )
+        if isinstance(result, dict) and result.get("successful"):
+            return result.get("data", {})
+        return None
     except Exception as e:
-        print(f"[API] GitHub API error for {path}: {e}")
+        print(f"[API] Composio GitHub {action_slug} error: {e}")
         return None
 
 @app.get("/api/v1/repo")
 def get_repo_info():
-    """Dynamically fetch repo details, recent commits, languages, and contributors from GitHub."""
+    """Dynamically fetch repo details via Composio-authenticated GitHub API."""
     import time
     global _repo_cache, _repo_cache_ts
 
-    # Cache for 60s to avoid rate limits
-    if _repo_cache and (time.time() - _repo_cache_ts) < 60:
+    # Cache for 120s
+    if _repo_cache and _repo_cache.get("recentCommits") and (time.time() - _repo_cache_ts) < 120:
         return _repo_cache
 
     repo_slug = os.getenv("GITHUB_REPO", "theshubh007/FortressAI_AI_Agent_Security_Platform")
+    owner, repo_name = repo_slug.split("/", 1)
 
-    # Parallel-ish fetches (sequential but fast)
-    repo_data = _github_api(f"/repos/{repo_slug}") or {}
-    commits = _github_api(f"/repos/{repo_slug}/commits?per_page=10") or []
-    languages = _github_api(f"/repos/{repo_slug}/languages") or {}
-    contributors = _github_api(f"/repos/{repo_slug}/contributors?per_page=10") or []
-    contents = _github_api(f"/repos/{repo_slug}/contents") or []
+    # Fetch via Composio (authenticated — no rate limits)
+    repo_data = _composio_github("GITHUB_GET_A_REPOSITORY", {"owner": owner, "repo": repo_name}) or {}
+    commits_data = _composio_github("GITHUB_LIST_COMMITS", {"owner": owner, "repo": repo_name, "per_page": 10}) or []
+    langs_data = _composio_github("GITHUB_LIST_REPOSITORY_LANGUAGES", {"owner": owner, "repo": repo_name}) or {}
+    contribs_data = _composio_github("GITHUB_LIST_REPOSITORY_CONTRIBUTORS", {"owner": owner, "repo": repo_name, "per_page": 10}) or []
+    contents_data = _composio_github("GITHUB_GET_REPOSITORY_CONTENT", {"owner": owner, "repo": repo_name, "path": ""}) or []
 
-    # Build file tree (top-level)
-    file_tree = []
-    for item in (contents if isinstance(contents, list) else []):
-        file_tree.append({
-            "name": item.get("name", ""),
-            "type": item.get("type", "file"),
-            "size": item.get("size", 0),
-            "path": item.get("path", ""),
-        })
+    # Helper: extract list from Composio response (may be nested)
+    def _as_list(data):
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            # Composio sometimes nests in a key
+            for v in data.values():
+                if isinstance(v, list):
+                    return v
+        return []
 
-    # Build recent commits
+    # Normalize commits
     recent_commits = []
-    for c in commits[:10]:
-        cm = c.get("commit", {})
+    for c in _as_list(commits_data)[:10]:
+        if not isinstance(c, dict):
+            continue
+        cm = c.get("commit", {}) or {}
+        author_info = cm.get("author", {}) or {}
         recent_commits.append({
-            "sha": c.get("sha", "")[:7],
-            "message": cm.get("message", "").split("\n")[0][:120],
-            "author": cm.get("author", {}).get("name", "Unknown"),
-            "date": cm.get("author", {}).get("date", ""),
-            "avatar": (c.get("author") or {}).get("avatar_url", ""),
+            "sha": str(c.get("sha", ""))[:7],
+            "message": str(cm.get("message", "")).split("\n")[0][:120],
+            "author": author_info.get("name", "Unknown"),
+            "date": author_info.get("date", ""),
+            "avatar": ((c.get("author") or {}).get("avatar_url", "")),
         })
 
-    # Build contributors
+    # Normalize contributors
     contribs = []
-    for ct in contributors[:10]:
+    for ct in _as_list(contribs_data)[:10]:
+        if not isinstance(ct, dict):
+            continue
         contribs.append({
             "login": ct.get("login", ""),
             "avatar": ct.get("avatar_url", ""),
@@ -911,8 +938,28 @@ def get_repo_info():
             "url": ct.get("html_url", ""),
         })
 
-    # Total language bytes for percentage calculation
+    # Languages — Composio nests in {"languages": {...}}
+    languages = {}
+    raw_langs = langs_data if isinstance(langs_data, dict) else {}
+    # Unwrap if nested
+    if "languages" in raw_langs and isinstance(raw_langs["languages"], dict):
+        raw_langs = raw_langs["languages"]
+    for k, v in raw_langs.items():
+        if isinstance(v, (int, float)):
+            languages[k] = v
     total_lang = sum(languages.values()) if languages else 1
+
+    # File tree
+    file_tree = []
+    for item in _as_list(contents_data):
+        if not isinstance(item, dict):
+            continue
+        file_tree.append({
+            "name": item.get("name", ""),
+            "type": item.get("type", "file"),
+            "size": item.get("size", 0),
+            "path": item.get("path", ""),
+        })
 
     result = {
         "name": repo_data.get("name", repo_slug.split("/")[-1]),

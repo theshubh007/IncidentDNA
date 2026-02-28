@@ -1,0 +1,104 @@
+{
+  "use_case": 5,
+  "name": "Gradual Slow Burn / Index Fragmentation",
+  "expected_decision": "AUTO_RESOLVE",
+  "expected_rule": "RULE_4",
+  "actual_decision": "HUMAN_ESCALATION",
+  "actual_rule": "RULE_5",
+  "passed": false,
+  "elapsed_seconds": 184.15,
+  "event": {
+    "event_id": "demo-uc5-b85cca38",
+    "service": "worker-service",
+    "anomaly_type": "gradual_degradation",
+    "incident_type": "TREND",
+    "severity": "P3",
+    "details": {
+      "deploy_id": "DPL-20241220-TREND-0001",
+      "trend_duration_days": 20,
+      "metric": "response_time_p99",
+      "start_value_ms": 180,
+      "current_value_ms": 208,
+      "drift_pct": 15.5,
+      "source": "demo_runner",
+      "confidence_override": 0.91,
+      "approved_override": true,
+      "blast_radius_override": 1,
+      "fix_proven_override": true,
+      "risk_level_override": "LOW"
+    }
+  },
+  "result": {
+    "event_id": "demo-uc5-b85cca38",
+    "severity": "P3",
+    "root_cause": "Batch size configuration change on Jan 10 from 50 to 100 is causing memory pressure and performance degradation. The doubled batch size exceeds available memory capacity, causing: (1) memory usage to spike to 92% (vs 65% baseline), (2) GC time to increase 5.6x (450ms vs 80ms), (3) message queue backlog to grow 5x (5000 vs 1000), and (4) worker throughput to drop by 44% (45 vs 80). This creates a cascading effect where workers cannot process messages fast enough, leading to queue buildup and gradual P99 latency degradation (15.5% drift over 20 days). This is NOT a memory leak but a resource configuration mismatch.",
+    "fix": "fix_config",
+    "fix_options": [
+      {
+        "rank": 1,
+        "title": "Revert Batch Size to Previous Stable Value",
+        "commands": [
+          "kubectl set env deployment/worker-service BATCH_SIZE=50 -n production",
+          "kubectl rollout status deployment/worker-service -n production --timeout=5m",
+          "kubectl logs -l app=worker-service -n production --tail=50 | grep 'batch_size'",
+          "watch 'kubectl top pods -l app=worker-service -n production'"
+        ],
+        "estimated_time": "8 minutes",
+        "risk_level": "LOW",
+        "rollback": "kubectl set env deployment/worker-service BATCH_SIZE=100 -n production && kubectl rollout status deployment/worker-service -n production"
+      },
+      {
+        "rank": 2,
+        "title": "Scale Worker Instances Horizontally",
+        "commands": [
+          "kubectl scale deployment/worker-service --replicas=6 -n production",
+          "kubectl rollout status deployment/worker-service -n production --timeout=5m",
+          "kubectl get pods -l app=worker-service -n production -o wide",
+          "kubectl set env deployment/worker-service BATCH_SIZE=75 -n production",
+          "sleep 120 && kubectl logs -l app=worker-service -n production --tail=100 | grep -E 'memory|throughput|queue'"
+        ],
+        "estimated_time": "12 minutes",
+        "risk_level": "MEDIUM",
+        "rollback": "kubectl scale deployment/worker-service --replicas=3 -n production && kubectl set env deployment/worker-service BATCH_SIZE=100 -n production"
+      },
+      {
+        "rank": 3,
+        "title": "Tune Batch Size with JVM Heap Adjustment",
+        "commands": [
+          "kubectl get configmap worker-service-config -n production -o yaml > /tmp/worker-config-backup.yaml",
+          "kubectl patch configmap worker-service-config -n production --type merge -p '{\"data\":{\"BATCH_SIZE\":\"60\",\"JAVA_OPTS\": \"-Xmx4g -Xms4g -XX:+UseG1GC -XX:MaxGCPauseMillis=200\"}}'",
+          "kubectl rollout restart deployment/worker-service -n production",
+          "kubectl rollout status deployment/worker-service -n production --timeout=5m",
+          "for i in {1..5}; do sleep 60; kubectl top pods -l app=worker-service -n production; done",
+          "kubectl logs -l app=worker-service -n production --tail=200 | grep -E 'GC|memory|batch'"
+        ],
+        "estimated_time": "15 minutes",
+        "risk_level": "MEDIUM",
+        "rollback": "kubectl apply -f /tmp/worker-config-backup.yaml && kubectl rollout restart deployment/worker-service -n production && kubectl rollout status deployment/worker-service -n production"
+      }
+    ],
+    "confidence": 0.65,
+    "approved": false,
+    "debate_rounds": 2,
+    "blast_radius": [
+      "notification-service"
+    ],
+    "evidence": [
+      "runbook",
+      "past_incident",
+      "metrics"
+    ],
+    "slack": "FALLBACK_LOGGED (Composio unavailable: cannot import name 'Action' from 'composio' (/Users/premshah/Master/Hackathon/ReleaseShield/IncidentDNA/.venv/lib/python3.13/site-packages/composio/__init__.py))",
+    "github": "FALLBACK_LOGGED (Composio unavailable: cannot import name 'Action' from 'composio' (/Users/premshah/Master/Hackathon/ReleaseShield/IncidentDNA/.venv/lib/python3.13/site-packages/composio/__init__.py))",
+    "threshold_decision": "HUMAN_ESCALATION",
+    "rule_applied": "RULE_5",
+    "rule_description": "Confidence 91% meets high band but not all auto-resolve conditions met",
+    "urgency": "HIGH_CONFIDENCE",
+    "incident_type": "TREND",
+    "auto_fixed": false,
+    "fix_proven": true,
+    "risk_level": "LOW",
+    "mttr_seconds": 164
+  },
+  "timestamp": "2026-02-28T22:34:01.328800+00:00"
+}
