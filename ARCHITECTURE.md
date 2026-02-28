@@ -86,12 +86,12 @@ cd dashboard && npm install && npm run dev
 | Agent Layer | manager.py, ag1_detector.py, ag2_investigator.py, ... | ✅ Done |
 | Tools | query_snowflake.py, search_runbooks.py, find_similar_incidents.py, ... | ✅ Done |
 | Utils | snowflake_conn.py, snowflake_llm.py | ✅ Done |
-| React Dashboard | App.jsx, api.js, mockData.js | ✅ Done (live data via api.py) |
+| React Dashboard | App.jsx, api.js, mockData.js | ✅ Done (mock data) |
 | Snowflake SQL | 01_schema.sql, 02_seed_data.sql, 03_dynamic_tables.sql | ✅ Done |
 | Trigger Listener | trigger_listener.py | ✅ Done |
-| Backend API | api.py | ✅ Done — FastAPI at :8000 |
+| Backend API | api.py | ✅ Done (for React live data) |
 
-_Last updated: 2026-02-28 07:17 by scripts/gen_architecture.py_
+_Last updated: 2026-02-28 08:39 by scripts/gen_architecture.py_
 <!-- STATUS_END -->
 
 ---
@@ -439,13 +439,13 @@ IncidentDNA/
 ├── tools/                      ✅
 │   ├── query_snowflake.py              Generic SELECT (used by all agents)
 │   ├── search_runbooks.py              Cortex Search on RAW.RUNBOOKS
-│   ├── find_similar_incidents.py       Keyword search on RAW.PAST_INCIDENTS
+│   ├── find_similar_incidents.py       CORTEX.SIMILARITY on RAW.PAST_INCIDENTS
 │   ├── composio_actions.py             Slack + GitHub via Composio SDK
 │   ├── idempotency.py                  SHA256 dedup before any external action
 │
 ├── utils/                      ✅
 │   ├── snowflake_conn.py               get_connection(), run_query(), run_dml()
-│   ├── snowflake_llm.py                Auto-selects LLM (Gemini > Groq > OpenAI)
+│   ├── snowflake_llm.py                SnowflakeCortexLLM wrapper (BaseChatModel)
 │
 ├── snowflake/                  ✅
 │   ├── 01_schema.sql                 ✅  DDL: RAW.*, AI.*, ANALYTICS.*
@@ -455,22 +455,18 @@ IncidentDNA/
 ├── ingestion/                  ✅
 │   └── trigger_listener.py         ✅  Composio WebSocket → run_incident_crew()
 │
-├── dashboard/                  ✅ (live data via api.py)
-│   ├── .env                            ✅  VITE_USE_LIVE_DATA=true (switches to real data)
+├── dashboard/                  ✅ (mock data)
 │   └── src/
 │       ├── pages/              8 pages: Overview, Incidents, Releases...
-│       ├── api.js                      Calls FastAPI at localhost:8000 when live
-│       ├── config.js                   Reads VITE_* env vars
-│       ├── mockData.js                 Offline demo data (fallback)
+│       ├── api.js                      Toggle VITE_USE_LIVE_DATA for real data
+│       ├── mockData.js                 Offline demo data
 │
-├── api.py                             ✅  FastAPI backend — REST + WebSocket at :8000
-│                                           Serves all dashboard endpoints from Snowflake
 ├── CLAUDE.md                          ✅  Claude Code auto-loads this every session
 ├── ARCHITECTURE.md                    ✅  This file — auto-updated by hooks
 ├── gen_architecture.py                ✅  Auto-updates this file
-├── requirements.txt                   ✅  fastapi + uvicorn now included
+├── requirements.txt                   ✅
 ├── test_agent.py                      ✅  python test_agent.py [snowflake|agents]
-├── .env                               ✅  Credentials (never commit this to GitHub!)
+├── .env                               ✅  Credentials
 ```
 <!-- FILES_END -->
 
