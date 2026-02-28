@@ -2044,10 +2044,12 @@ ol {
 /* ── Blue Accent Interactions ──────────────────────────────── */
 .sidebar-link:hover {
   background: var(--bg-sidebar-hover);
+  color: var(--text-sidebar-active);
 }
 
 .sidebar-link.active {
   background: var(--bg-sidebar-active);
+  color: var(--text-sidebar-active);
   border-left: 3px solid #3b82f6;
 }
 

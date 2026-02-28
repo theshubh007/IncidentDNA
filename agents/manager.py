@@ -617,10 +617,17 @@ Return ONLY JSON:
             event["event_id"], event["service"], severity, root_cause,
             blast_radius=blast_radius, fix_options=fix_options,
             confidence=threshold["confidence"], mttr_seconds=mttr_seconds,
+            evidence_sources=investigation.get("evidence_sources"),
+            rule_applied=threshold["rule_applied"],
         )
         github_result = create_github_issue(
             event["event_id"], event["service"], severity,
             root_cause, f"[AUTO-RESOLVED] {fix}",
+            blast_radius=blast_radius, fix_options=fix_options,
+            evidence_sources=investigation.get("evidence_sources"),
+            confidence=threshold["confidence"],
+            threshold_decision=threshold["decision"],
+            rule_applied=threshold["rule_applied"],
         )
     else:
         print(f"[MANAGER] HUMAN_ESCALATION path — urgency={threshold.get('urgency')}")
@@ -630,9 +637,16 @@ Return ONLY JSON:
             urgency=threshold.get("urgency", "MEDIUM_CONFIDENCE"),
             incident_type=threshold["incident_type"],
             confidence=threshold["confidence"],
+            evidence_sources=investigation.get("evidence_sources"),
+            rule_applied=threshold["rule_applied"],
         )
         github_result = create_github_issue(
             event["event_id"], event["service"], severity, root_cause, fix,
+            blast_radius=blast_radius, fix_options=fix_options,
+            evidence_sources=investigation.get("evidence_sources"),
+            confidence=threshold["confidence"],
+            threshold_decision=threshold["decision"],
+            rule_applied=threshold["rule_applied"],
         )
 
     print(f"[AG4] Slack  -> {slack_result}")
