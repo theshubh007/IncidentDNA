@@ -9,6 +9,71 @@
 
 ---
 
+## 0. What Is This? (Beginner Friendly)
+
+**IncidentDNA** is an AI system that watches your software services and automatically investigates problems — without a human having to do anything.
+
+### The Problem It Solves
+When something breaks in production (e.g. a database crashes, an API slows down), engineers normally have to:
+1. Get paged at 3am
+2. Manually look at logs and metrics
+3. Figure out what went wrong
+4. Create a ticket and alert the team on Slack
+
+**IncidentDNA does all of that automatically, in under 2 minutes.**
+
+### What Triggers It
+A code deployment (git push) can introduce bugs. Our system listens for deployments via **Composio** (a tool that connects to GitHub and Slack), then injects a simulated metric spike into Snowflake to test the detection pipeline.
+
+### What Happens Next (the full flow in plain English)
+```
+1. Developer pushes code to GitHub
+2. Composio sees the push → writes a record in Snowflake
+3. Snowflake detects a metric anomaly (e.g. error rate spiked)
+4. 3 AI agents wake up and investigate:
+      Agent 1 → "How bad is this? Which services are affected?"
+      Agent 2 → "What caused this? Check runbooks + past incidents + live metrics"
+      Agent 5 → "Do I trust Agent 2's answer? Challenge it."
+5. If approved → post Slack alert + create GitHub issue automatically
+6. Everything is stored in Snowflake for the dashboard
+```
+
+---
+
+## 0b. Live Connections (What Is Connected Right Now)
+
+| What | Value | Purpose |
+|------|-------|---------|
+| **LLM (AI Brain)** | Google Gemini 2.5 Flash | Powers all 3 agents' reasoning |
+| **Database** | Snowflake — `INCIDENTDNA` | Stores all metrics, incidents, decisions |
+| **Snowflake Account** | `sfsehol-llama_lounge_hackathon_sudhag` | Hackathon account |
+| **GitHub Repo (target)** | [`theshubh007/IncidentDNA`](https://github.com/theshubh007/IncidentDNA) | Where GitHub issues are auto-created |
+| **Slack Channel** | `#incidents` | Where Slack alerts are posted |
+| **Composio User ID** | `pg-test-a6c32032-f3c5-43d2-9090-e16ffbd46f0d` | Identity used to send Slack/GitHub actions |
+| **Composio API** | `ak_Pv532zVAVQJoFTReaSgt` | Auth key for Composio |
+
+> **To change the GitHub repo**: edit `GITHUB_REPO=` in `.env`
+> **To change the Slack channel**: edit `SLACK_CHANNEL=` in `.env`
+
+---
+
+## 0c. How to Run It
+
+```bash
+# Step 1 — Check Snowflake connection and tables
+python test_agent.py snowflake
+
+# Step 2 — Run the full AI agent pipeline (triggers Slack + GitHub)
+python test_agent.py agents
+
+# Step 3 — Start the React dashboard (mock data, works offline)
+cd dashboard && npm install && npm run dev
+```
+
+> All credentials are in `.env`. Ask a teammate for the file if you don't have it.
+
+---
+
 <!-- STATUS_START -->
 ## Status Dashboard
 
@@ -29,37 +94,39 @@ _Last updated: 2026-02-28 07:17 by scripts/gen_architecture.py_
 
 ## 1. System Overview
 
+> **How to read this diagram:** Follow the arrows top to bottom. Each box is a step. The blue box is the brain (AI pipeline). Orange box = actions taken automatically.
+
 ```mermaid
 flowchart TD
-    A["GitHub Commit"] --> B
-    C["Slack Message"] --> B
+    A["👨‍💻 Developer pushes code\nto GitHub"] --> B
+    C["💬 Slack message detected"] --> B
 
-    B["Composio WebSocket<br/>ingestion/trigger_listener.py"]
+    B["🔌 Composio WebSocket Listener\ningestion/trigger_listener.py\n\nListens for GitHub push events\nand Slack messages in real-time"]
 
-    B --> D["RAW.DEPLOY_EVENTS<br/>insert record"]
-    B --> E["RAW.METRICS<br/>inject spike: error_rate=0.22, latency=2100ms"]
+    B --> D["📝 RAW.DEPLOY_EVENTS\nRecord the deploy in Snowflake"]
+    B --> E["📈 RAW.METRICS\nInject a metric spike\ne.g. error_rate=0.22, latency=2100ms"]
 
-    E --> F["ANALYTICS.METRIC_DEVIATIONS<br/>dynamic table, refreshes every 30s<br/>z-score anomaly detection"]
+    E --> F["⚡ ANALYTICS.METRIC_DEVIATIONS\nDynamic table — auto-refreshes every 30s\nCalculates z-score: how abnormal is this metric?"]
 
-    F --> G{"Anomaly detected?<br/>z_score > 2"}
-    G -- No --> H["Skip pipeline"]
-    G -- Yes --> I
+    F --> G{"🚨 Anomaly detected?\nz_score > 2 = unusual spike"}
+    G -- "No — normal traffic" --> H["✅ Skip — no action needed"]
+    G -- "Yes — something is wrong!" --> I
 
-    I["run_incident_crew<br/>agents/manager.py"]
+    I["🤖 run_incident_crew\nagents/manager.py\n\nEntry point for the AI pipeline"]
 
-    I --> AG1["Ag1 - Detector<br/>Severity + Blast Radius"]
-    AG1 --> AG2["Ag2 - Investigator<br/>3-source evidence chain"]
-    AG2 --> AG5["Ag5 - Validator<br/>Adversarial judge"]
+    I --> AG1["Agent 1 — Detector\nHow severe? P1/P2/P3\nWhich services are affected?"]
+    AG1 --> AG2["Agent 2 — Investigator\nSearches runbooks + past incidents + metrics\nBuilds root cause hypothesis"]
+    AG2 --> AG5["Agent 5 — Validator\nAdversarial judge\nChallenges Agent 2's answer"]
 
     AG5 --> V{"APPROVE or DEBATE?"}
-    V -- "DEBATE - max 2 rounds" --> AG2
-    V -- APPROVED --> ACT["Execute Actions"]
+    V -- "DEBATE — max 2 rounds\nAgent 2 tries again with feedback" --> AG2
+    V -- "APPROVED ✅" --> ACT["🚀 Execute Actions"]
 
-    ACT --> SL["Slack Alert<br/>#incidents"]
-    ACT --> GH["GitHub Issue<br/>theshubh007/IncidentDNA"]
-    ACT --> DB["AI.INCIDENT_HISTORY<br/>MTTR, root cause, fix"]
+    ACT --> SL["💬 Slack Alert\nChannel: #incidents\nPosted via Composio"]
+    ACT --> GH["🐙 GitHub Issue\nRepo: theshubh007/IncidentDNA\nCreated via Composio"]
+    ACT --> DB["🗄️ AI.INCIDENT_HISTORY\nStores: MTTR, root cause, fix applied"]
 
-    DB --> UI["React Dashboard<br/>dashboard/"]
+    DB --> UI["📊 React Dashboard\ndashboard/\nShows live incident history"]
 
     style A fill:#2da44e,color:#fff
     style C fill:#4a154b,color:#fff
@@ -73,46 +140,48 @@ flowchart TD
 
 ## 2. Agent Pipeline (Detail)
 
+> **3 agents run sequentially.** Each agent uses AI (Gemini 2.5 Flash) to reason about the incident. Each agent has specific tools it can call — like querying Snowflake or searching runbooks.
+
 ```mermaid
 flowchart TD
-    EVT["event dict<br/>event_id, service, anomaly_type, severity"]
+    EVT["📥 Incident Event\nevent_id, service name,\nanomaly type, severity signal"]
 
     EVT --> AG1
 
-    subgraph P1["Phase 1 - Detect"]
-        AG1["Ag1 Detector<br/>ag1_detector.py"]
-        AG1 -->|"query_snowflake<br/>SERVICE_DEPENDENCIES"| SF_DEP[("SERVICE_DEPENDENCIES")]
-        AG1 -->|"query_snowflake<br/>METRIC_DEVIATIONS"| SF_MET[("METRIC_DEVIATIONS")]
-        AG1 --> OUT1["severity: P1/P2/P3<br/>blast_radius: list<br/>classification: string"]
+    subgraph P1["🔴 Phase 1 — Detect (Agent 1)"]
+        AG1["Ag1 Detector\nag1_detector.py\n\nTask: Classify the incident"]
+        AG1 -->|"Queries Snowflake:\nWho depends on this service?"| SF_DEP[("RAW.SERVICE_DEPENDENCIES\nBlast radius lookup")]
+        AG1 -->|"Queries Snowflake:\nIs z_score > 3 (P1) or > 2 (P2)?"| SF_MET[("ANALYTICS.METRIC_DEVIATIONS\nLive metric anomalies")]
+        AG1 --> OUT1["Output JSON:\nseverity: P1 / P2 / P3\nblast_radius: services affected\nclassification: what is happening"]
     end
 
     OUT1 --> AG2
 
-    subgraph P2["Phase 2 - Investigate"]
-        AG2["Ag2 Investigator<br/>ag2_investigator.py"]
-        AG2 -->|"search_runbooks<br/>CORTEX.SEARCH_PREVIEW"| SF_RB[("RAW.RUNBOOKS")]
-        AG2 -->|"find_similar_incidents<br/>CORTEX.SIMILARITY"| SF_PI[("RAW.PAST_INCIDENTS")]
-        AG2 -->|"query_snowflake<br/>baseline_avg, z_score"| SF_MET2[("METRIC_DEVIATIONS")]
-        AG2 --> OUT2["root_cause: string<br/>confidence: 0.0-1.0<br/>evidence_sources: list<br/>recommended_action: string"]
+    subgraph P2["🟡 Phase 2 — Investigate (Agent 2)"]
+        AG2["Ag2 Investigator\nag2_investigator.py\n\nTask: Find the root cause"]
+        AG2 -->|"Searches runbooks\n(Cortex vector search)"| SF_RB[("RAW.RUNBOOKS\n5 runbooks about known issues")]
+        AG2 -->|"Finds similar past incidents\n(keyword search fallback)"| SF_PI[("RAW.PAST_INCIDENTS\n10 historical incidents")]
+        AG2 -->|"Checks live metrics"| SF_MET2[("ANALYTICS.METRIC_DEVIATIONS")]
+        AG2 --> OUT2["Output JSON:\nroot_cause: detailed explanation\nconfidence: 0.0 to 1.0\nevidence_sources: which tools helped\nrecommended_action: rollback/fix_config/etc"]
     end
 
     OUT2 --> AG5
 
-    subgraph P3["Phase 3 - Validate, max 2 rounds"]
-        AG5["Ag5 Validator<br/>ag5_validator.py"]
-        AG5 -->|"query_snowflake<br/>alternative causes check"| SF_MET3[("METRIC_DEVIATIONS")]
-        AG5 --> OUT3["verdict: APPROVED or DEBATE<br/>confidence_adjustment: float<br/>objections: list"]
+    subgraph P3["🟠 Phase 3 — Validate (Agent 5) — max 2 rounds"]
+        AG5["Ag5 Validator\nag5_validator.py\n\nTask: Challenge Agent 2's answer\nBe adversarial — find holes in the logic"]
+        AG5 -->|"Double-checks metrics\nfor alternative causes"| SF_MET3[("ANALYTICS.METRIC_DEVIATIONS")]
+        AG5 --> OUT3["Output JSON:\nverdict: APPROVED or DEBATE\nconfidence_adjustment: e.g. +0.05 or -0.2\nobjections: list of concerns"]
     end
 
-    OUT3 -->|"DEBATE - re-investigate"| AG2
-    OUT3 -->|"APPROVED"| MGR
+    OUT3 -->|"DEBATE: Agent 2 re-investigates\nwith Agent 5's objections as context"| AG2
+    OUT3 -->|"APPROVED ✅\nor max rounds reached"| MGR
 
-    subgraph P4["Phase 4 - Act"]
-        MGR["Manager<br/>agents/manager.py"]
-        MGR -->|"post_slack_alert"| SLA["Slack"]
-        MGR -->|"create_github_issue"| GHA["GitHub"]
-        MGR -->|"INSERT"| DEC[("AI.DECISIONS<br/>every agent step")]
-        MGR -->|"INSERT"| INC[("AI.INCIDENT_HISTORY<br/>final record")]
+    subgraph P4["🔵 Phase 4 — Act (Manager)"]
+        MGR["Manager\nagents/manager.py\n\nOrchestrates everything"]
+        MGR -->|"SLACK_SEND_MESSAGE\nvia Composio SDK"| SLA["💬 Slack\n#incidents channel"]
+        MGR -->|"GITHUB_CREATE_AN_ISSUE\nvia Composio SDK"| GHA["🐙 GitHub\ntheshubh007/IncidentDNA"]
+        MGR -->|"INSERT (every agent step)"| DEC[("AI.DECISIONS\nFull audit trail of reasoning")]
+        MGR -->|"INSERT (final record)"| INC[("AI.INCIDENT_HISTORY\nMTTR, root cause, fix")]
     end
 
     style P1 fill:#e8f4f8,stroke:#0066cc
@@ -125,120 +194,123 @@ flowchart TD
 
 ## 3. Snowflake Data Model
 
+> **Snowflake** is the database. It has 3 schemas (folders): RAW (raw inputs), ANALYTICS (computed data), AI (agent outputs).
+
 ```mermaid
 erDiagram
     RAW_DEPLOY_EVENTS {
-        string deploy_id PK
-        string service
-        string version
-        string deployed_by
-        string diff_summary
-        timestamp deployed_at
+        string deploy_id PK "e.g. deploy_001"
+        string service "e.g. payment-service"
+        string version "e.g. v2.1.4"
+        string deployed_by "GitHub username"
+        string diff_summary "What changed"
+        timestamp deployed_at "When it happened"
     }
 
     RAW_METRICS {
-        timestamp recorded_at
-        string service
-        string metric_name
-        float metric_value
+        timestamp recorded_at "When measured"
+        string service "Which service"
+        string metric_name "e.g. error_rate, latency_ms"
+        float metric_value "e.g. 0.22 or 2100"
     }
 
     RAW_RUNBOOKS {
         string id PK
-        string service
-        string symptom
-        string runbook_text
-        string severity
+        string service "Which service this runbook is for"
+        string symptom "What went wrong"
+        string runbook_text "How to fix it"
+        string severity "P1/P2/P3"
     }
 
     RAW_PAST_INCIDENTS {
         string id PK
-        string title
-        string service
-        string root_cause
-        string fix_applied
-        int mttr_minutes
+        string title "Short description"
+        string service "Which service was affected"
+        string root_cause "What caused it"
+        string fix_applied "What fixed it"
+        int mttr_minutes "Minutes to resolve"
     }
 
     RAW_SERVICE_DEPENDENCIES {
-        string service
-        string depends_on
+        string service "Service name"
+        string depends_on "What it depends on"
     }
 
     ANALYTICS_METRIC_DEVIATIONS {
-        string service
-        string metric_name
-        float current_value
-        float baseline_avg
-        float z_score
-        string severity
+        string service "Which service"
+        string metric_name "Which metric"
+        float current_value "Current reading"
+        float baseline_avg "Normal average"
+        float z_score "How abnormal: >2=alert, >3=critical"
+        string severity "P1/P2/P3 based on z_score"
         timestamp recorded_at
     }
 
     AI_DECISIONS {
         string id PK
-        string event_id
-        string agent_name
-        variant input
-        variant output
-        string reasoning
-        float confidence
+        string event_id "Links to the incident"
+        string agent_name "ag1_detector / ag2_investigator / ag5_validator"
+        variant output "JSON: what the agent decided"
+        string reasoning "Full text of agent's thinking"
+        float confidence "0.0 to 1.0"
         timestamp created_at
     }
 
     AI_ACTIONS {
         string id PK
-        string event_id
-        string action_type
-        string idempotency_key
-        variant payload
-        string status
+        string event_id "Links to the incident"
+        string action_type "SLACK_ALERT or GITHUB_ISSUE"
+        string idempotency_key "SHA256 hash — prevents duplicate sends"
+        variant payload "What was sent"
+        string status "PENDING / SENT / FAILED"
         timestamp executed_at
     }
 
     AI_INCIDENT_HISTORY {
         string id PK
-        string event_id
-        string service
-        string root_cause
-        string fix_applied
-        string severity
-        float confidence
-        int mttr_minutes
+        string event_id "Links to the incident"
+        string service_name "Affected service"
+        string root_cause "Final diagnosis"
+        string fix_applied "What action was taken"
+        float confidence "Final confidence score"
+        int mttr_minutes "Time to resolve (updated later)"
         timestamp resolved_at
     }
 
-    RAW_METRICS ||--o{ ANALYTICS_METRIC_DEVIATIONS : "aggregated into dynamic table"
+    RAW_METRICS ||--o{ ANALYTICS_METRIC_DEVIATIONS : "aggregated every 30s"
     RAW_DEPLOY_EVENTS ||--o{ AI_DECISIONS : "triggers pipeline"
-    AI_DECISIONS }o--|| AI_INCIDENT_HISTORY : "resolved into"
-    AI_DECISIONS }o--o{ AI_ACTIONS : "causes"
+    AI_DECISIONS }o--|| AI_INCIDENT_HISTORY : "resolved into final record"
+    AI_DECISIONS }o--o{ AI_ACTIONS : "causes Slack/GitHub actions"
 ```
 
 ---
 
 ## 4. Tool to Agent Matrix
 
+> **Tools** are functions that agents can call during their reasoning. Think of them as the agent's hands — it can look things up, query databases, or fire alerts.
+
 ```mermaid
 graph LR
-    subgraph Agents
-        AG1["Ag1 Detector"]
-        AG2["Ag2 Investigator"]
-        AG5["Ag5 Validator"]
-        MGR["Manager"]
+    subgraph Agents["🤖 AI Agents"]
+        AG1["Agent 1\nDetector"]
+        AG2["Agent 2\nInvestigator"]
+        AG5["Agent 5\nValidator"]
+        MGR["Manager\nOrchestrator"]
     end
 
-    subgraph Tools["tools/"]
-        T1["query_snowflake.py<br/>Generic SELECT"]
-        T2["search_runbooks.py<br/>CORTEX.SEARCH_PREVIEW"]
-        T3["find_similar_incidents.py<br/>CORTEX.SIMILARITY"]
-        T4["composio_actions.py<br/>Slack + GitHub"]
-        T5["idempotency.py<br/>SHA256 dedup"]
+    subgraph Tools["🔧 Tools (tools/)"]
+        T1["query_snowflake.py\nRun any SELECT query\nUsed by all agents"]
+        T2["search_runbooks.py\nCortex vector search\nFinds relevant runbooks"]
+        T3["find_similar_incidents.py\nKeyword search fallback\nFinds past similar incidents"]
+        T4["composio_actions.py\nSends Slack alerts\nCreates GitHub issues"]
+        T5["idempotency.py\nSHA256 dedup check\nPrevents duplicate alerts"]
     end
 
-    subgraph External
-        SF[("Snowflake<br/>IncidentDNA DB")]
-        SL["Slack<br/>#incidents"]
-        GH["GitHub<br/>theshubh007/IncidentDNA"]
+    subgraph External["🌐 External Services"]
+        SF[("❄️ Snowflake\nDatabase: INCIDENTDNA\nAccount: sfsehol-llama_lounge_hackathon_sudhag")]
+        SL["💬 Slack\nChannel: #incidents"]
+        GH["🐙 GitHub\nRepo: theshubh007/IncidentDNA\nIssues created here automatically"]
+        GM["🧠 Gemini 2.5 Flash\nGoogle AI Studio\nPowers all agent reasoning"]
     end
 
     AG1 --> T1
@@ -255,31 +327,46 @@ graph LR
     T4 --> SL
     T4 --> GH
 
+    AG1 -.->|"LLM calls"| GM
+    AG2 -.->|"LLM calls"| GM
+    AG5 -.->|"LLM calls"| GM
+
     style AG1 fill:#dbeafe
     style AG2 fill:#dcfce7
     style AG5 fill:#fef9c3
     style MGR fill:#fee2e2
+    style GH fill:#24292f,color:#fff
+    style SL fill:#4a154b,color:#fff
+    style GM fill:#4285f4,color:#fff
 ```
 
 ---
 
 ## 5. LLM Architecture
 
+> **How the AI brain works.** All 3 agents use the same LLM (Gemini 2.5 Flash). The `snowflake_llm.py` file picks the best available LLM automatically based on what API keys are in `.env`.
+
 ```mermaid
 flowchart LR
-    A["CrewAI Agent<br/>ag1, ag2, ag5"] --> B
+    A["🤖 CrewAI Agent\nag1, ag2, or ag5"] --> B
 
-    B["utils/snowflake_llm.py<br/>SnowflakeCortexLLM<br/>extends BaseChatModel"]
+    B["utils/snowflake_llm.py\n\nAuto-selects LLM:\n1st choice: Gemini 2.5 Flash ✅ ACTIVE\n2nd choice: Groq llama-3.3-70b\n3rd choice: OpenAI GPT-4o-mini\n4th choice: Snowflake Cortex (disabled on this account)"]
 
-    B --> C["utils/snowflake_conn.py<br/>get_connection()"]
-    C --> D[("Snowflake<br/>CORTEX.COMPLETE<br/>llama3.1-70b")]
+    B --> C["Google AI Studio\nGemini 2.5 Flash\nFree tier: 15 RPM"]
 
-    D --> E["Raw JSON response<br/>_extract_text()"]
-    E --> F["AIMessage<br/>back to CrewAI"]
+    C --> D["LLM Response\nAgent reads it and\ndecides next action"]
 
     style B fill:#0066cc,color:#fff
-    style D fill:#29B5E8,color:#fff
+    style C fill:#4285f4,color:#fff
 ```
+
+**Current LLM config in `.env`:**
+```
+GEMINI_API_KEY=AIzaSyD_M81Fcci18_Knqc7HK2zzTD10ZHwpnqo   ← Google AI Studio key
+GROQ_API_KEY=gsk_K13...                                    ← Backup if Gemini hits limits
+```
+
+> **Note:** Snowflake Cortex COMPLETE is disabled on the hackathon account. Only Cortex Search (runbooks) and Cortex Similarity (deprecated, using keyword fallback) work.
 
 ---
 
@@ -298,13 +385,13 @@ IncidentDNA/
 ├── tools/                      ✅
 │   ├── query_snowflake.py              Generic SELECT (used by all agents)
 │   ├── search_runbooks.py              Cortex Search on RAW.RUNBOOKS
-│   ├── find_similar_incidents.py       CORTEX.SIMILARITY on RAW.PAST_INCIDENTS
+│   ├── find_similar_incidents.py       Keyword search on RAW.PAST_INCIDENTS
 │   ├── composio_actions.py             Slack + GitHub via Composio SDK
 │   ├── idempotency.py                  SHA256 dedup before any external action
 │
 ├── utils/                      ✅
 │   ├── snowflake_conn.py               get_connection(), run_query(), run_dml()
-│   ├── snowflake_llm.py                SnowflakeCortexLLM wrapper (BaseChatModel)
+│   ├── snowflake_llm.py                Auto-selects LLM (Gemini > Groq > OpenAI)
 │
 ├── snowflake/                  ✅
 │   ├── 01_schema.sql                 ✅  DDL: RAW.*, AI.*, ANALYTICS.*
@@ -325,30 +412,52 @@ IncidentDNA/
 ├── gen_architecture.py                ✅  Auto-updates this file
 ├── requirements.txt                   ✅
 ├── test_agent.py                      ✅  python test_agent.py [snowflake|agents]
-├── .env                               ✅  Credentials
+├── .env                               ✅  Credentials (never commit this to GitHub!)
 ```
 <!-- FILES_END -->
 
 ---
 
-## 7. Integration Contracts (P1 to P2 to P3)
+## 7. Integration Contracts (Who Talks to Who)
+
+> This shows the data flow between the 3 team members' work areas.
 
 ```mermaid
 sequenceDiagram
-    participant P1 as P1 Snowflake SQL
-    participant P2 as P2 Agent Layer
-    participant P3 as P3 Frontend
+    participant P1 as 🗄️ P1 — Snowflake SQL
+    participant P2 as 🤖 P2 — Agent Layer
+    participant P3 as 🖥️ P3 — Frontend & Listener
 
-    P1->>P2: RAW.RUNBOOKS (Cortex Search enabled)
-    P1->>P2: RAW.PAST_INCIDENTS
-    P1->>P2: RAW.SERVICE_DEPENDENCIES
-    P1->>P2: ANALYTICS.METRIC_DEVIATIONS (dynamic table)
+    Note over P1: Creates all tables and seeds data
 
-    P2->>P3: run_incident_crew(event) returns result dict
-    P2->>P3: AI.DECISIONS table (agent reasoning steps)
-    P2->>P3: AI.ACTIONS table (Slack/GitHub audit log)
-    P2->>P3: AI.INCIDENT_HISTORY (MTTR + resolution)
+    P1->>P2: RAW.RUNBOOKS (5 runbooks, Cortex Search enabled)
+    P1->>P2: RAW.PAST_INCIDENTS (10 historical incidents)
+    P1->>P2: RAW.SERVICE_DEPENDENCIES (blast radius data)
+    P1->>P2: ANALYTICS.METRIC_DEVIATIONS (z-score dynamic table, 30s refresh)
 
-    P3->>P1: Writes RAW.DEPLOY_EVENTS (trigger_listener)
-    P3->>P1: Writes RAW.METRICS (spike injection)
+    Note over P2: Agents read from P1's tables, write decisions
+
+    P2->>P3: AI.DECISIONS (every agent reasoning step)
+    P2->>P3: AI.ACTIONS (Slack/GitHub audit log with status)
+    P2->>P3: AI.INCIDENT_HISTORY (MTTR + root cause + fix)
+
+    Note over P3: Listener writes triggers, dashboard reads results
+
+    P3->>P1: Writes RAW.DEPLOY_EVENTS (when deploy detected)
+    P3->>P1: Writes RAW.METRICS spike (simulates anomaly)
 ```
+
+---
+
+## 8. Credentials Quick Reference
+
+> Keep this handy when setting up on a new machine. All values also live in `.env`.
+
+| Service | How to Get Access | Used For |
+|---------|------------------|----------|
+| **Snowflake** | Use shared credentials in `.env` | Database for everything |
+| **Gemini API** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) — free | LLM for agents |
+| **Groq API** | [console.groq.com](https://console.groq.com) — free | Backup LLM |
+| **Composio** | [app.composio.dev](https://app.composio.dev) — shared API key in `.env` | Slack + GitHub integration |
+| **GitHub** | Connect your GitHub account in Composio dashboard | Creates issues in `theshubh007/IncidentDNA` |
+| **Slack** | Connect your Slack workspace in Composio dashboard | Posts to `#incidents` |
