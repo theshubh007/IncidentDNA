@@ -1,9 +1,13 @@
 from crewai import Agent, Task
+from langchain_groq import ChatGroq
 from tools.query_snowflake import QuerySnowflakeTool
+
+_llm = ChatGroq(model="llama3-70b-8192", temperature=0)
 
 
 def make_detector() -> Agent:
     return Agent(
+        llm=_llm,
         role="Incident Detector",
         goal=(
             "Classify the severity of a production anomaly (P1/P2/P3) "

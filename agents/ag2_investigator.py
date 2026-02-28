@@ -1,11 +1,15 @@
 from crewai import Agent, Task
+from langchain_groq import ChatGroq
 from tools.search_runbooks import SearchRunbooksTool
 from tools.find_similar_incidents import FindSimilarIncidentsTool
 from tools.query_snowflake import QuerySnowflakeTool
 
+_llm = ChatGroq(model="llama3-70b-8192", temperature=0)
+
 
 def make_investigator() -> Agent:
     return Agent(
+        llm=_llm,
         role="Root Cause Investigator",
         goal=(
             "Determine the definitive root cause of the incident using 3 mandatory evidence sources: "

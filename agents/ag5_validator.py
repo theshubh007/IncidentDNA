@@ -1,9 +1,13 @@
 from crewai import Agent, Task
+from langchain_groq import ChatGroq
 from tools.query_snowflake import QuerySnowflakeTool
+
+_llm = ChatGroq(model="llama3-70b-8192", temperature=0)
 
 
 def make_validator() -> Agent:
     return Agent(
+        llm=_llm,
         role="Adversarial Validator",
         goal=(
             "Stress-test the proposed root cause by running 4 adversarial checks. "
