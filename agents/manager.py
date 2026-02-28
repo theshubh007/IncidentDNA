@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from agents.ag1_detector import make_detector, detector_task
 from agents.ag2_investigator import make_investigator, investigator_task
 from agents.ag3_fix_advisor import make_fix_advisor, fix_advisor_task
-from agents.ag4_action_agent import make_action_agent, action_task
 from agents.ag5_validator import make_validator, validator_task
 from agents.crew import make_crew
 from tools.composio_actions import post_slack_alert, create_github_issue
@@ -370,26 +369,11 @@ Return ONLY JSON:
     )
     print(f"[AG3] Fix options: {len(fix_options)} generated")
 
-    # ── Phase 5: Action Agent (Ag4) ──────────────────────────────────────────
+    # ── Phase 5: Actions ─────────────────────────────────────────────────────
     print("\n[MANAGER] Phase 5: Actions")
     root_cause = investigation["root_cause"]
     fix        = investigation["recommended_action"]
     severity   = detection["severity"]
-
-    # Use Ag4 to compose action content
-    ag4 = make_action_agent()
-    t4  = action_task(ag4, event, detection, investigation, fix_options)
-    action_raw = make_crew([ag4], [t4]).kickoff().raw
-    action_content = _safe_parse(action_raw)
-
-    _log_decision(
-        event_id   = event["event_id"],
-        agent_name = "ag4_action_agent",
-        input_data = {**event, "detection": detection, "investigation": investigation},
-        output_data= action_content,
-        reasoning  = action_raw,
-        confidence = investigation["confidence"],
-    )
 
     # Execute actions via Composio
     blast_radius = detection.get("blast_radius", [])
