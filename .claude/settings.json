@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/spartan/Documents/IncidentDNA && python3 scripts/gen_architecture.py 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
