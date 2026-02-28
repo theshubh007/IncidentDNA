@@ -12,8 +12,11 @@ class QuerySnowflakeTool(BaseTool):
 
     def _run(self, sql: str) -> str:
         sql = sql.strip()
-        if not sql.upper().startswith("SELECT"):
-            return "Error: only SELECT queries are allowed."
+        upper = sql.upper()
+        if not (upper.startswith("SELECT") or upper.startswith("WITH")):
+            return "Error: only SELECT queries (and CTEs) are allowed."
+        if ";" in sql:
+            return "Error: multi-statement queries are not allowed."
         try:
             rows = run_query(sql)
             if not rows:

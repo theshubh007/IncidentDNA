@@ -85,11 +85,26 @@ def trigger_incident_pipeline(anomaly: dict):
         f'{{"z_score": {anomaly["Z_SCORE"]}, "current_value": {anomaly["CURRENT_VALUE"]}, "baseline_avg": {anomaly["BASELINE_AVG"]}}}'
     ))
     
-    # TODO: Person 2 will implement this
-    # from agents.manager import run_pipeline
-    # run_pipeline(anomaly_payload)
-    
     print(f"[INGESTION] Anomaly event created in AI.ANOMALY_EVENTS")
+
+    # Trigger the CrewAI agent pipeline
+    try:
+        from agents.manager import run_incident_crew
+        event_payload = {
+            "event_id": f"evt-{anomaly['SERVICE_NAME']}-{anomaly['METRIC_NAME']}",
+            "service": anomaly["SERVICE_NAME"],
+            "anomaly_type": f"{anomaly['METRIC_NAME']}_spike",
+            "severity": anomaly["SEVERITY"],
+            "details": {
+                "z_score": anomaly["Z_SCORE"],
+                "current_value": anomaly["CURRENT_VALUE"],
+                "baseline_avg": anomaly["BASELINE_AVG"],
+            },
+        }
+        result = run_incident_crew(event_payload)
+        print(f"[INGESTION] Pipeline completed: severity={result['severity']}, confidence={result['confidence']}")
+    except Exception as e:
+        print(f"[INGESTION] Pipeline error: {e}")
 
 def handle_github_push(event):
     """Handle GitHub push event from Composio"""

@@ -1,5 +1,6 @@
 from crewai import Agent, Task
 from utils.snowflake_llm import cortex_llm
+from utils.sanitize import sanitize_sql_value
 from tools.search_runbooks import SearchRunbooksTool
 from tools.find_similar_incidents import FindSimilarIncidentsTool
 from tools.query_snowflake import QuerySnowflakeTool
@@ -30,7 +31,7 @@ def make_investigator() -> Agent:
 
 
 def investigator_task(agent: Agent, event: dict, detection: dict) -> Task:
-    service = _sanitize_sql_value(event["service"])
+    service = sanitize_sql_value(event["service"])
     anomaly = event["anomaly_type"]
     severity = detection.get("severity", event["severity"])
     classification = detection.get("classification", anomaly)
@@ -93,11 +94,3 @@ Return ONLY this JSON — no explanation, no markdown:
         agent=agent,
         expected_output='Valid JSON with keys: root_cause, confidence, evidence_sources, recommended_action',
     )
-
-
-def _sanitize_sql_value(value: str) -> str:
-    """Sanitize a value for safe SQL interpolation in prompts."""
-    if not isinstance(value, str):
-        value = str(value)
-    # Remove SQL injection characters
-    return value.replace("'", "").replace("\"", "").replace(";", "").replace("--", "").strip()[:100]

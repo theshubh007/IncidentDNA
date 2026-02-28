@@ -1,5 +1,6 @@
 from crewai import Agent, Task
 from utils.snowflake_llm import cortex_llm
+from utils.sanitize import sanitize_sql_value
 from tools.query_snowflake import QuerySnowflakeTool
 
 
@@ -23,15 +24,11 @@ def make_detector() -> Agent:
     )
 
 
-def _sanitize_sql_value(value: str) -> str:
-    """Sanitize a value for safe SQL interpolation in prompts."""
-    if not isinstance(value, str):
-        value = str(value)
-    return value.replace("'", "").replace("\"", "").replace(";", "").replace("--", "").strip()[:100]
+_sanitize_sql_value = sanitize_sql_value
 
 
 def detector_task(agent: Agent, event: dict) -> Task:
-    service = _sanitize_sql_value(event["service"])
+    service = sanitize_sql_value(event["service"])
     return Task(
         description=f"""
 Analyze this production anomaly and classify it precisely.

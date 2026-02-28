@@ -70,6 +70,7 @@ class SnowflakeCortexLLM(BaseChatModel):
         finally:
             if cur:
                 cur.close()
+            conn.close()
 
         # Parse response — COMPLETE with messages array returns JSON or plain string
         text = _extract_text(raw)
@@ -92,7 +93,7 @@ def _extract_text(raw: Any) -> str:
     if isinstance(raw, dict):
         choices = raw.get("choices", [])
         if choices:
-            return choices[0].get("messages", str(raw))
+            return choices[0].get("messages", choices[0].get("message", str(raw)))
         return str(raw)
 
     # String — might be plain text or JSON
@@ -102,7 +103,7 @@ def _extract_text(raw: Any) -> str:
             if isinstance(parsed, dict):
                 choices = parsed.get("choices", [])
                 if choices:
-                    return choices[0].get("messages", raw)
+                    return choices[0].get("messages", choices[0].get("message", raw))
             return raw
         except json.JSONDecodeError:
             return raw

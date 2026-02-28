@@ -13,10 +13,9 @@ class FindSimilarIncidentsTool(BaseTool):
     )
 
     def _run(self, incident_description: str) -> str:
-        safe = incident_description.strip().replace("'", "''")
         try:
-            results = run_query(f"""
-                SELECT
+            results = run_query(
+                """SELECT
                     title,
                     root_cause,
                     fix_applied,
@@ -24,14 +23,15 @@ class FindSimilarIncidentsTool(BaseTool):
                     mttr_minutes,
                     ROUND(
                         SNOWFLAKE.CORTEX.SIMILARITY(
-                            '{safe}',
+                            %s,
                             title || ' ' || root_cause
                         ), 3
                     ) AS similarity_score
                 FROM RAW.PAST_INCIDENTS
                 ORDER BY similarity_score DESC
-                LIMIT 3
-            """)
+                LIMIT 3""",
+                (incident_description.strip(),),
+            )
             if not results:
                 return "No similar past incidents found."
             return str(results)

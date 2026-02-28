@@ -12,15 +12,15 @@ class SearchRunbooksTool(BaseTool):
     )
 
     def _run(self, query: str) -> str:
-        safe = query.strip().replace("'", "''")
         try:
-            results = run_query(f"""
-                SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
+            results = run_query(
+                """SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
                   'INCIDENTDNA.RAW.RUNBOOK_SEARCH',
-                  '{safe}',
+                  %s,
                   3
-                ) AS results
-            """)
+                ) AS results""",
+                (query.strip(),),
+            )
             if results and results[0].get("RESULTS"):
                 return str(results[0]["RESULTS"])
             return "No matching runbooks found."

@@ -1,5 +1,6 @@
 from crewai import Agent, Task
 from utils.snowflake_llm import cortex_llm
+from utils.sanitize import sanitize_sql_value
 from tools.query_snowflake import QuerySnowflakeTool
 
 
@@ -26,15 +27,8 @@ def make_validator() -> Agent:
     )
 
 
-def _sanitize_sql_value(value: str) -> str:
-    """Sanitize a value for safe SQL interpolation in prompts."""
-    if not isinstance(value, str):
-        value = str(value)
-    return value.replace("'", "").replace("\"", "").replace(";", "").replace("--", "").strip()[:100]
-
-
 def validator_task(agent: Agent, investigation: dict, event: dict) -> Task:
-    service = _sanitize_sql_value(event["service"])
+    service = sanitize_sql_value(event["service"])
     root_cause = investigation.get("root_cause", "unknown")
     confidence = investigation.get("confidence", 0.5)
     evidence = investigation.get("evidence_sources", [])
