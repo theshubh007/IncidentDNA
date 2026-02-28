@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../hooks/useAppContext';
 import {
     METRICS_OVERVIEW, STEPPER_STATES, DEPENDENCY_GRAPH,
-    INCIDENTS_DATA, SIMULATION_SCENARIOS
+    INCIDENTS_DATA
 } from '../data/mockData';
 import {
     AlertTriangle, TrendingUp, Activity, Clock, Check,

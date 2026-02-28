@@ -58,6 +58,7 @@ class SnowflakeCortexLLM(BaseChatModel):
 
         # Call SNOWFLAKE.CORTEX.COMPLETE via parameterised query (safe from injection)
         conn = get_connection()
+        cur = None
         try:
             cur = conn.cursor()
             cur.execute(
@@ -67,7 +68,8 @@ class SnowflakeCortexLLM(BaseChatModel):
             row = cur.fetchone()
             raw = row[0] if row else ""
         finally:
-            conn.close()
+            if cur:
+                cur.close()
 
         # Parse response — COMPLETE with messages array returns JSON or plain string
         text = _extract_text(raw)

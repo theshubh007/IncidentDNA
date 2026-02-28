@@ -97,9 +97,7 @@ def test_agents():
 # ── LEVEL 3: Just Snowflake connection check (no agents) ─────────────────────
 def test_tools_only():
     """Test individual tools without running full agents."""
-    if not os.getenv("GROQ_API_KEY"):
-        print("\n  Skipping tool test — GROQ_API_KEY not set")
-        return
+    # Tools only need Snowflake connection (no external LLM key needed)
 
     print("\n[TEST] Testing search_runbooks tool...")
     from tools.search_runbooks import SearchRunbooksTool
@@ -131,7 +129,7 @@ if __name__ == "__main__":
 
     if mode == "snowflake":
         test_snowflake()
-        print("\nNext: python test_agent.py agents   (needs GROQ_API_KEY)")
+        print("\nNext: python test_agent.py agents   (uses Snowflake Cortex LLM - no extra key needed)")
 
     elif mode == "tools":
         test_snowflake()

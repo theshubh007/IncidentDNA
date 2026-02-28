@@ -23,8 +23,15 @@ def make_detector() -> Agent:
     )
 
 
+def _sanitize_sql_value(value: str) -> str:
+    """Sanitize a value for safe SQL interpolation in prompts."""
+    if not isinstance(value, str):
+        value = str(value)
+    return value.replace("'", "").replace("\"", "").replace(";", "").replace("--", "").strip()[:100]
+
+
 def detector_task(agent: Agent, event: dict) -> Task:
-    service = event["service"]
+    service = _sanitize_sql_value(event["service"])
     return Task(
         description=f"""
 Analyze this production anomaly and classify it precisely.

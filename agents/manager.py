@@ -43,15 +43,37 @@ def _safe_parse(raw: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # Extract first JSON object from the string
-    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group())
-        except json.JSONDecodeError:
-            pass
+    # Extract first JSON object using non-greedy match with balanced braces
+    # Find the first { and then find its matching }
+    start = cleaned.find('{')
+    if start != -1:
+        depth = 0
+        for i, char in enumerate(cleaned[start:], start):
+            if char == '{':
+                depth += 1
+            elif char == '}':
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(cleaned[start:i+1])
+                    except json.JSONDecodeError:
+                        break
 
     return {"error": "parse_failed", "raw": raw[:500]}
+
+
+def _safe_float(value, default: float = 0.0) -> float:
+    """Safely convert a value to float, handling string numbers from LLM."""
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except (ValueError, AttributeError):
+            return default
+    return default
 
 
 def _log_decision(
@@ -187,18 +209,16 @@ def run_incident_crew(event: dict) -> dict:
         if validation["verdict"] == "APPROVED":
             approved = True
             # Apply positive confidence adjustment on approval
-            investigation["confidence"] = round(
-                min(1.0, investigation["confidence"] + validation["confidence_adjustment"]),
-                4,
-            )
+            conf = _safe_float(investigation["confidence"], 0.5)
+            adj = _safe_float(validation["confidence_adjustment"], 0.0)
+            investigation["confidence"] = round(min(1.0, conf + adj), 4)
             print(f"[AG5] ✅ APPROVED — final confidence: {investigation['confidence']}")
         else:
             debate_round += 1
             # Reduce confidence on debate; investigator will retry next round
-            investigation["confidence"] = round(
-                max(0.0, investigation["confidence"] + validation["confidence_adjustment"]),
-                4,
-            )
+            conf = _safe_float(investigation["confidence"], 0.5)
+            adj = _safe_float(validation["confidence_adjustment"], -0.05)
+            investigation["confidence"] = round(max(0.0, conf + adj), 4)
             print(f"[AG5] ⚠️ DEBATE — objections: {validation['objections']}")
             print(f"[AG5] Adjusted confidence: {investigation['confidence']}")
 

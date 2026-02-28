@@ -8,4 +8,5 @@ dist/
 build/
 .venv/
 venv/
+node_modules/
 fallback_actions.jsonl

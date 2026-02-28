@@ -333,3 +333,31 @@ export const POSTMORTEMS_DATA = INCIDENTS_DATA.filter(i => i.postmortem !== null
     rootCause: i.rootCause,
     confidence: i.confidence,
 }));
+
+// Alias for api.js compatibility
+export const SERVICES_DATA = SERVICES;
+
+export const RUNBOOKS_DATA = [
+    { id: 'RB-001', title: 'DB Pool Tuning Guide', service: 'payment-service', content: 'When connection pool utilization exceeds 80%, increase pool_max by 50%. Monitor for 15 minutes. If issue persists, check for long-running queries using pg_stat_activity.', lastUsed: '2026-02-27', matchCount: 5 },
+    { id: 'RB-002', title: 'Rate Limiter Configuration', service: 'api-gateway', content: 'Default rate limit: 1000 req/s per client. To adjust, modify config in consul KV store. Always test in staging first. Rollback: revert consul KV to previous value.', lastUsed: '2026-02-27', matchCount: 3 },
+    { id: 'RB-003', title: 'Memory Leak Triage', service: 'all', content: 'Check heap dumps using /debug/pprof. Look for growing allocations over time. Common causes: event listener leaks, unclosed connections, growing caches without TTL.', lastUsed: '2026-02-26', matchCount: 4 },
+    { id: 'RB-004', title: 'Redis Failover Recovery', service: 'all', content: 'On Redis cluster failover, expect 10-20 minute cache cold start. Run cache pre-warming script: ./scripts/warm-cache.sh. Monitor hit ratio in Grafana.', lastUsed: '2026-02-25', matchCount: 2 },
+    { id: 'RB-005', title: 'Canary Deploy Rollback', service: 'all', content: 'If canary error rate exceeds 5% or P99 latency doubles, trigger automatic rollback. Run: kubectl rollout undo deployment/<service>. Notify #deploys channel.', lastUsed: '2026-02-24', matchCount: 1 },
+];
+
+export const SETTINGS_DATA = {
+    connections: [
+        { id: 'snowflake', name: 'Snowflake', status: 'connected', detail: 'INCIDENTDNA · COMPUTE_WH', icon: '❄️' },
+        { id: 'composio-github', name: 'GitHub (Composio)', status: 'connected', detail: 'org/incidents · 3 triggers enabled', icon: '🐙' },
+        { id: 'composio-slack', name: 'Slack (Composio)', status: 'connected', detail: '#incident-alerts · WebSocket active', icon: '💬' },
+        { id: 'crewai', name: 'CrewAI Engine', status: 'connected', detail: '5 agents, hierarchical process', icon: '🤖' },
+    ],
+    policies: [
+        { id: 'auto-act-threshold', label: 'Auto-Act Confidence Threshold', value: '85%', description: 'Minimum confidence to auto-execute actions without human review' },
+        { id: 'debate-rounds', label: 'Max Debate Rounds', value: '2', description: 'Maximum Ag2↔Ag5 validation rounds before Manager override' },
+        { id: 'agent-timeout', label: 'Agent Timeout', value: '30s', description: 'Per-agent execution timeout before fallback' },
+        { id: 'idempotency', label: 'Idempotency Check', value: 'Enabled', description: 'Dedup check on AI.ACTIONS before every external call' },
+        { id: 'friday-deploy', label: 'Friday Deploy Warning', value: 'Enabled', description: 'Additional risk factor for deploys on Fridays after 3 PM' },
+        { id: 'blast-radius-threshold', label: 'Blast Radius Alert Threshold', value: '≥2 services', description: 'Auto-escalate when predicted blast radius exceeds threshold' },
+    ],
+};

@@ -5,17 +5,16 @@
 
 ---
 
-## All Credentials
+## Credentials Setup
 
-| Service | Field | Value |
+| Service | Field | Where to Get |
 |---------|-------|-------|
-| **Snowflake** | URL | https://sfsehol-llama_lounge_hackathon_sudhag.snowflakecomputing.com |
-| **Snowflake** | Username | `USER` |
-| **Snowflake** | Password | `sn0wf@ll` |
-| **Composio** | API Key | `ak_Pv532zVAVQJoFTReaSgt` |
-| **LLM (Groq)** | Free key | Get at https://console.groq.com → add as `GROQ_API_KEY` in `.env` |
+| **Snowflake** | Account/User/Password | Your Snowflake account settings |
+| **Composio** | API Key | https://app.composio.dev/settings |
+| **LLM** | None needed | Uses Snowflake Cortex (free, built-in) |
 
-> Copy `.env.example` → `.env` — Snowflake + Composio are pre-filled. Only `GROQ_API_KEY` needs adding.
+> **Setup:** Copy `.env.example` → `.env` and fill in your credentials.
+> **Security:** Never commit `.env` or share credentials in documentation.
 
 ---
 
@@ -345,16 +344,19 @@ SELECT SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
 ### Step 4 — `.env.example` (root)
 
 ```env
-# ── SNOWFLAKE (P1 fills these) ───────────────────────────────────────
-SNOWFLAKE_ACCOUNT=sfsehol-llama_lounge_hackathon_sudhag
-SNOWFLAKE_USER=USER
-SNOWFLAKE_PASSWORD=sn0wf@ll
+# ── SNOWFLAKE (all LLM calls run here via Cortex — no external API needed) ────
+# Get these from your Snowflake account settings
+SNOWFLAKE_ACCOUNT=your_account_identifier
+SNOWFLAKE_USER=your_username
+SNOWFLAKE_PASSWORD=your_password
 SNOWFLAKE_DATABASE=INCIDENTDNA
 SNOWFLAKE_WAREHOUSE=COMPUTE_WH
 SNOWFLAKE_ROLE=ACCOUNTADMIN
 
-# ── COMPOSIO (P2 fills these) ────────────────────────────────────────
-COMPOSIO_API_KEY=your_composio_api_key_here
+# ── COMPOSIO (Slack + GitHub integrations) ────────────────────────────────────
+# Get API key from: https://app.composio.dev/settings
+# Then run: python scripts/setup_composio.py
+COMPOSIO_API_KEY=your_composio_api_key
 GITHUB_REPO=your-org/your-repo
 SLACK_CHANNEL=#incidents
 ```

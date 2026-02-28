@@ -1,3 +1,4 @@
+
 # Task 3 — Frontend + Trigger Layer (Streamlit + Composio Listener)
 **Owner:** Person 3 (Frontend / Integration Engineer)
 **Your folders:** `ingestion/` + `dashboard/`
@@ -7,18 +8,17 @@
 
 ---
 
-## All Credentials
+## Credentials Setup
 
-| Service | Field | Value |
+| Service | Field | Where to Get |
 |---------|-------|-------|
-| **Snowflake** | URL | https://sfsehol-llama_lounge_hackathon_sudhag.snowflakecomputing.com |
-| **Snowflake** | Username | `USER` |
-| **Snowflake** | Password | `sn0wf@ll` |
-| **Composio** | API Key | `ak_Pv532zVAVQJoFTReaSgt` |
-| **LLM (Groq)** | Free key | Get at https://console.groq.com → add as `GROQ_API_KEY` in `.env` |
+| **Snowflake** | Account/User/Password | Your Snowflake account settings |
+| **Composio** | API Key | https://app.composio.dev/settings |
+| **LLM** | None needed | Uses Snowflake Cortex (free, built-in) |
 
-> Copy `.env.example` → `.env` — Snowflake + Composio are pre-filled. Only `GROQ_API_KEY` needs adding.
-> Connect Composio integrations: `composio add github` + `composio add slack` (one-time OAuth)
+> **Setup:** Copy `.env.example` → `.env` and fill in your credentials.
+> **Composio:** Run `python scripts/setup_composio.py` to authenticate GitHub + Slack (one-time OAuth).
+> **Security:** Never commit `.env` or share credentials in documentation.
 
 ---
 

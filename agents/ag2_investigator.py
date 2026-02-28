@@ -30,11 +30,30 @@ def make_investigator() -> Agent:
 
 
 def investigator_task(agent: Agent, event: dict, detection: dict) -> Task:
-    service = event["service"]
+    service = _sanitize_sql_value(event["service"])
     anomaly = event["anomaly_type"]
     severity = detection.get("severity", event["severity"])
     classification = detection.get("classification", anomaly)
     blast_radius = detection.get("blast_radius", [])
+    
+    # Support debate loop: include validator feedback if present
+    validator_objections = event.get("validator_objections", [])
+    validator_notes = event.get("validator_notes", "")
+    
+    feedback_section = ""
+    if validator_objections or validator_notes:
+        objections_str = "\n".join(f"  - {obj}" for obj in validator_objections) if validator_objections else "  (none)"
+        feedback_section = f"""
+
+=== VALIDATOR FEEDBACK (address these concerns) ===
+Objections:
+{objections_str}
+Notes: {validator_notes or '(none)'}
+
+You MUST address each objection in your revised analysis. If the validator raised
+a concern about alternative causes, investigate them. If evidence was weak, find
+stronger evidence. Your confidence should reflect how well you addressed these.
+"""
 
     return Task(
         description=f"""
@@ -45,7 +64,7 @@ Service        : {service}
 Severity       : {severity}
 Classification : {classification}
 Blast Radius   : {blast_radius}
-Anomaly Type   : {anomaly}
+Anomaly Type   : {anomaly}{feedback_section}
 
 === MANDATORY STEPS — complete ALL 3 ===
 
@@ -74,3 +93,11 @@ Return ONLY this JSON — no explanation, no markdown:
         agent=agent,
         expected_output='Valid JSON with keys: root_cause, confidence, evidence_sources, recommended_action',
     )
+
+
+def _sanitize_sql_value(value: str) -> str:
+    """Sanitize a value for safe SQL interpolation in prompts."""
+    if not isinstance(value, str):
+        value = str(value)
+    # Remove SQL injection characters
+    return value.replace("'", "").replace("\"", "").replace(";", "").replace("--", "").strip()[:100]

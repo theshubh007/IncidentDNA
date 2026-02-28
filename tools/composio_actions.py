@@ -4,9 +4,8 @@ Uses the new Composio SDK (composio package, session-based).
 
 Setup (one-time, before running):
   1. pip install composio
-  2. Set COMPOSIO_API_KEY=ak_Pv532zVAVQJoFTReaSgt in .env
-  3. Connect GitHub: composio add github   (opens OAuth in browser)
-  4. Connect Slack:  composio add slack    (opens OAuth in browser)
+  2. Set COMPOSIO_API_KEY in .env (get from https://app.composio.dev/settings)
+  3. Run: python scripts/setup_composio.py (authenticates GitHub + Slack)
 """
 
 import os

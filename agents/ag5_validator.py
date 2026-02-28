@@ -26,8 +26,15 @@ def make_validator() -> Agent:
     )
 
 
+def _sanitize_sql_value(value: str) -> str:
+    """Sanitize a value for safe SQL interpolation in prompts."""
+    if not isinstance(value, str):
+        value = str(value)
+    return value.replace("'", "").replace("\"", "").replace(";", "").replace("--", "").strip()[:100]
+
+
 def validator_task(agent: Agent, investigation: dict, event: dict) -> Task:
-    service = event["service"]
+    service = _sanitize_sql_value(event["service"])
     root_cause = investigation.get("root_cause", "unknown")
     confidence = investigation.get("confidence", 0.5)
     evidence = investigation.get("evidence_sources", [])
