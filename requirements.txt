@@ -1,5 +1,5 @@
 crewai==0.28.0
-langchain-groq==0.1.3
+langchain-core>=0.1.0
 snowflake-connector-python==3.6.0
 composio
 streamlit==1.33.0

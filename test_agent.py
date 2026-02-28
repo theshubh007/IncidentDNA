@@ -1,9 +1,10 @@
 """
 Quick test script — run this to verify the agent pipeline works end-to-end.
+LLM: Snowflake Cortex llama3.1-70b (free, no external API key needed).
 
 Levels of testing:
-  python test_agent.py snowflake   → test Snowflake connection only
-  python test_agent.py agents      → test Ag1 + Ag2 + Ag5 (needs GROQ_API_KEY)
+  python test_agent.py snowflake   → test Snowflake connection + Cortex LLM
+  python test_agent.py agents      → full agent pipeline (Ag1 + Ag2 + Ag5)
   python test_agent.py full        → full pipeline including Composio actions
 """
 
@@ -57,14 +58,10 @@ def test_snowflake():
     return all_ok
 
 
-# ── LEVEL 2: Agent pipeline (needs GROQ_API_KEY) ─────────────────────────────
+# ── LEVEL 2: Agent pipeline (uses Snowflake Cortex — no extra key needed) ────
 def test_agents():
-    if not os.getenv("GROQ_API_KEY"):
-        print("\n  ❌ GROQ_API_KEY not set in .env")
-        print("     Get a free key at https://console.groq.com")
-        return False
-
     print("\n[TEST] Running agent pipeline with a simulated incident...")
+    print("       LLM: Snowflake Cortex llama3.1-70b (free)")
     from agents.manager import run_incident_crew
 
     test_event = {
