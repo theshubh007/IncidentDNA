@@ -592,23 +592,8 @@ Return ONLY JSON:
         confidence = threshold["confidence"],
     )
 
-    # ── Phase 5: Action Agent (Ag4) + Conditional Composio Actions ─────────
+    # ── Phase 5: Conditional Composio Actions ─────────────────────────────
     print("\n[MANAGER] Phase 5: Actions")
-
-    # Use Ag4 to compose action content
-    ag4 = make_action_agent()
-    t4  = action_task(ag4, event, detection, investigation, fix_options)
-    action_raw = make_crew([ag4], [t4]).kickoff().raw
-    action_content = _safe_parse(action_raw)
-
-    _log_decision(
-        event_id   = event["event_id"],
-        agent_name = "ag4_action_agent",
-        input_data = {**event, "detection": detection, "investigation": investigation},
-        output_data= action_content,
-        reasoning  = action_raw,
-        confidence = investigation["confidence"],
-    )
 
     # Compute MTTR for reporting
     ts_actions = datetime.now(timezone.utc)
