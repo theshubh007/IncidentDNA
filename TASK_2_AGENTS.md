@@ -7,12 +7,18 @@
 
 ---
 
-## Snowflake Access
-| Field    | Value |
-|----------|-------|
-| URL      | https://sfsehol-llama_lounge_hackathon_sudhag.snowflakecomputing.com |
-| Username | USER |
-| Password | sn0wf@ll |
+## All Credentials
+
+| Service | Field | Value |
+|---------|-------|-------|
+| **Snowflake** | URL | https://sfsehol-llama_lounge_hackathon_sudhag.snowflakecomputing.com |
+| **Snowflake** | Username | `USER` |
+| **Snowflake** | Password | `sn0wf@ll` |
+| **Composio** | API Key | `ak_Pv532zVAVQJoFTReaSgt` |
+| **LLM (Groq)** | Free key | Get at https://console.groq.com → add as `GROQ_API_KEY` in `.env` |
+
+> Copy `.env.example` → `.env` — Snowflake + Composio are pre-filled. Only `GROQ_API_KEY` needs adding.
+> After getting Groq key, connect Composio integrations: `composio add github` + `composio add slack`
 
 ---
 
