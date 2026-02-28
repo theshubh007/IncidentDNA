@@ -22,6 +22,7 @@ import argparse
 from dotenv import load_dotenv
 
 load_dotenv()
+os.environ.setdefault("COMPOSIO_CACHE_DIR", "/tmp/composio-cache")
 
 # Fixed user ID for IncidentDNA agent.
 # This must match the runtime user used by the trigger listener and action layer.

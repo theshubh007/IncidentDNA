@@ -104,17 +104,43 @@ def _derive_severity(confidence: float) -> str:
     return "info"
 
 
+_incident_history_has_detected_at: bool | None = None
+
+
+def _incident_history_supports_detected_at() -> bool:
+    global _incident_history_has_detected_at
+    if _incident_history_has_detected_at is None:
+        cols = {
+            r.get("name", "").lower()
+            for r in _lower(_sf("DESC TABLE AI.INCIDENT_HISTORY"))
+        }
+        _incident_history_has_detected_at = "detected_at" in cols
+    return _incident_history_has_detected_at
+
+
+def _incident_history_rows(where_clause: str = "", params: tuple | None = None) -> list[dict]:
+    select_sql = (
+        """
+        SELECT event_id, service_name, root_cause, fix_applied,
+               confidence, mttr_minutes, detected_at, resolved_at
+        FROM AI.INCIDENT_HISTORY
+        """
+        if _incident_history_supports_detected_at()
+        else
+        """
+        SELECT event_id, service_name, root_cause, fix_applied,
+               confidence, mttr_minutes, NULL AS detected_at, resolved_at
+        FROM AI.INCIDENT_HISTORY
+        """
+    )
+    return _lower(_sf(f"{select_sql} {where_clause}".strip(), params))
+
+
 # ── Incidents ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/v1/incidents")
 def get_incidents(service: str = None, status: str = None, severity: str = None):
-    rows = _lower(_sf("""
-        SELECT event_id, service_name, root_cause, fix_applied,
-               confidence, mttr_minutes, detected_at, resolved_at
-        FROM AI.INCIDENT_HISTORY
-        ORDER BY resolved_at DESC
-        LIMIT 100
-    """))
+    rows = _incident_history_rows("ORDER BY resolved_at DESC LIMIT 100")
 
     incidents = []
     for r in rows:
@@ -145,12 +171,7 @@ def get_incidents(service: str = None, status: str = None, severity: str = None)
 
 @app.get("/api/v1/incidents/{incident_id}")
 def get_incident(incident_id: str):
-    rows = _lower(_sf("""
-        SELECT event_id, service_name, root_cause, fix_applied,
-               confidence, mttr_minutes, detected_at, resolved_at
-        FROM AI.INCIDENT_HISTORY
-        WHERE event_id = %s
-    """, (incident_id,)))
+    rows = _incident_history_rows("WHERE event_id = %s", (incident_id,))
 
     if not rows:
         raise HTTPException(status_code=404, detail="Incident not found")
@@ -518,23 +539,14 @@ def get_release_confidence(release_id: str):
 
 @app.get("/api/v1/postmortems")
 def get_postmortems():
-    rows = _lower(_sf("""
-        SELECT event_id, service_name, root_cause, fix_applied, confidence, detected_at, resolved_at
-        FROM AI.INCIDENT_HISTORY
-        ORDER BY resolved_at DESC
-        LIMIT 20
-    """))
+    rows = _incident_history_rows("ORDER BY resolved_at DESC LIMIT 20")
 
     return [_build_postmortem(r) for r in rows]
 
 
 @app.get("/api/v1/postmortems/{incident_id}")
 def get_postmortem(incident_id: str):
-    rows = _lower(_sf("""
-        SELECT event_id, service_name, root_cause, fix_applied, confidence, detected_at, resolved_at
-        FROM AI.INCIDENT_HISTORY
-        WHERE event_id = %s
-    """, (incident_id,)))
+    rows = _incident_history_rows("WHERE event_id = %s", (incident_id,))
 
     if not rows:
         raise HTTPException(status_code=404, detail="Not found")

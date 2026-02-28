@@ -10,6 +10,7 @@ Levels of testing:
 
 import sys
 import os
+import uuid
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -64,8 +65,11 @@ def test_agents():
     print("       LLM: Snowflake Cortex llama3.1-70b (free)")
     from agents.manager import run_incident_crew
 
+    event_id = f"test-{uuid.uuid4().hex[:8]}"
+    print(f"       Event ID: {event_id}")
+
     test_event = {
-        "event_id":    "test-001",
+        "event_id":    event_id,
         "service":     "payment-service",
         "anomaly_type": "db_pool_exhaustion",
         "severity":    "P2",
