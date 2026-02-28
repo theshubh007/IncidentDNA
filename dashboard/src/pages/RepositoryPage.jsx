@@ -351,7 +351,7 @@ function RepoCard({ repo, onClick }) {
             borderRadius: '14px', border: '1px solid var(--border-primary)',
             background: 'var(--bg-primary)', cursor: 'pointer',
             transition: 'border-color 200ms, box-shadow 200ms, transform 200ms',
-            padding: '22px', position: 'relative', overflow: 'hidden',
+            padding: '24px', position: 'relative', overflow: 'hidden',
         }}
             onMouseEnter={e => {
                 e.currentTarget.style.borderColor = 'var(--color-accent)';
@@ -371,17 +371,17 @@ function RepoCard({ repo, onClick }) {
             }} />
 
             {/* Icon + Name */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '12px', paddingRight: '20px' }}>
                 <div style={{
-                    width: '40px', height: '40px', borderRadius: '10px',
+                    width: '42px', height: '42px', borderRadius: '10px',
                     background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(139,92,246,0.12))',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}>
                     <Code2 size={20} style={{ color: 'var(--color-accent)' }} />
                 </div>
-                <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '15px', fontWeight: 700, letterSpacing: '-0.2px' }}>{repo.name}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: '15px', fontWeight: 700, letterSpacing: '-0.2px', wordBreak: 'break-word', lineHeight: 1.3 }}>{repo.name}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {repo.fullName}
                     </div>
                 </div>
@@ -531,7 +531,7 @@ export default function RepositoryPage() {
             </div>
 
             {/* Repo card grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '20px' }}>
                 {repos.map(repo => (
                     <RepoCard key={repo.fullName} repo={repo} onClick={() => setSelectedRepo(repo)} />
                 ))}

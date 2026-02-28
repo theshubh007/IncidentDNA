@@ -84,20 +84,20 @@ export default function Sidebar() {
 
                 <nav className="sidebar-nav">
                     {NAV_SECTIONS.map(section => {
-                        const SectionIcon = section.icon;
-                        const isOpen = openSections[section.id];
                         const hasActive = section.items.some(item =>
                             item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path)
                         );
+                        // Always show items if section has an active child
+                        const isOpen = openSections[section.id] || hasActive;
 
                         return (
-                            <div key={section.id} style={{ marginBottom: '4px' }}>
+                            <div key={section.id} style={{ marginBottom: '6px' }}>
                                 <button
                                     className="sidebar-section-toggle"
                                     onClick={() => toggleSection(section.id)}
                                     style={{
                                         display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
-                                        padding: '6px 12px', border: 'none', background: 'none', cursor: 'pointer',
+                                        padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
                                         color: hasActive ? 'var(--text-primary)' : 'var(--text-tertiary)',
                                         fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
                                         letterSpacing: '0.6px', transition: 'color 150ms',
@@ -121,6 +121,7 @@ export default function Sidebar() {
                                             onClick={() => navigate(item.path)}
                                             id={`nav-${item.id}`}
                                             title={item.label}
+                                            style={{ paddingLeft: '28px' }}
                                         >
                                             <Icon size={16} />
                                             <span className="link-text">{item.label}</span>
