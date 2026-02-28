@@ -300,6 +300,22 @@ export async function createGitHubIssue(repo, title, body) {
     });
 }
 
+// ── Repository Info ──────────────────────────────────────────
+
+export async function fetchRepoInfo() {
+    if (!config.useLiveData) return null;
+
+    const data = await request('/repo');
+    return data;
+}
+
+export async function fetchRepoFeatures() {
+    if (!config.useLiveData) return null;
+
+    const data = await request('/repo/features');
+    return data;
+}
+
 // ── MTTR Analytics ───────────────────────────────────────────
 
 export async function fetchMTTR() {

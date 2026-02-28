@@ -3,7 +3,7 @@ import { useApp } from '../hooks/useAppContext';
 import {
     LayoutDashboard, AlertTriangle, Rocket, Server,
     BookOpen, FileText, ScrollText, Settings,
-    ChevronLeft, ChevronRight, Shield
+    ChevronLeft, ChevronRight, Shield, GitBranch
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
     { id: 'runbooks', label: 'Runbooks', icon: BookOpen, path: '/runbooks' },
     { id: 'postmortems', label: 'Postmortems', icon: FileText, path: '/postmortems' },
     { id: 'audit', label: 'Audit Log', icon: ScrollText, path: '/audit' },
+    { id: 'repository', label: 'Repository', icon: GitBranch, path: '/repository' },
     { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
 ];
 
