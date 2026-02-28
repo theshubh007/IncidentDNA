@@ -38,7 +38,7 @@ agents/manager.py::run_incident_crew(event)
         │
         ▼
 tools/composio_actions.py
-        │   post_slack_alert()          → Slack #incidents
+        │   post_slack_alert()          → Slack #all-shubh
         │   create_github_issue()       → GitHub repo
         │   (both idempotent — checked against AI.ACTIONS before executing)
         ▼
@@ -171,7 +171,7 @@ SNOWFLAKE_WAREHOUSE=COMPUTE_WH
 SNOWFLAKE_ROLE=ACCOUNTADMIN
 COMPOSIO_API_KEY=ak_Pv532zVAVQJoFTReaSgt
 GITHUB_REPO=theshubh007/IncidentDNA
-SLACK_CHANNEL=#incidents
+SLACK_CHANNEL=all-shubh
 ```
 
 ---

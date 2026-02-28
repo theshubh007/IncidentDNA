@@ -16,7 +16,7 @@ import os
 import json
 import time
 import hashlib
-from composio import Composio
+from composio import Composio, Action
 from dotenv import load_dotenv
 from utils.snowflake_conn import run_dml, run_query
 
@@ -72,15 +72,12 @@ def _already_sent(key: str) -> str | None:
 
 def _execute_with_retry(action_name: str, payload: dict) -> None:
     """Execute a Composio action with retry logic and exponential backoff."""
+    action = Action(action_name)
+    entity = _get_client().get_entity(id=COMPOSIO_USER_ID)
     last_error = None
     for attempt in range(MAX_RETRIES + 1):
         try:
-            _get_client().tools.execute(
-                action_name,
-                payload,
-                user_id=COMPOSIO_USER_ID,
-                dangerously_skip_version_check=True,
-            )
+            entity.execute(action=action, params=payload)
             return  # success
         except Exception as e:
             last_error = e
@@ -152,12 +149,12 @@ def post_slack_alert(
         f"_Autonomous response in progress..._"
     )
 
-    channel = os.getenv("SLACK_CHANNEL", "#incidents").lstrip("#")  # API rejects '#' prefix
-    payload = {"channel": channel, "markdown_text": message}
+    channel = os.getenv("SLACK_CHANNEL", "all-shubh").lstrip("#")  # strip '#' if present
+    payload = {"channel": channel, "text": message}
 
     _record_action(event_id, "SLACK_ALERT", key, payload)
     try:
-        _execute_with_retry("SLACKBOT_CHAT_POST_MESSAGE", payload)
+        _execute_with_retry("SLACK_SEND_MESSAGE", payload)
         _update_status(key, "SENT")
         return "SENT"
     except Exception as e:
