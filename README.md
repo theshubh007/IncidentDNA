@@ -7,6 +7,18 @@
 
 ---
 
+## 🔑 Snowflake Access (Team)
+
+| Field    | Value                                                                        |
+|----------|------------------------------------------------------------------------------|
+| URL      | https://sfsehol-llama_lounge_hackathon_sudhag.snowflakecomputing.com         |
+| Username | USER                                                                         |
+| Password | sn0wf@ll                                                                     |
+
+> Copy these into your `.env` file — see `.env.example` (created by P1) for the full template.
+
+---
+
 ## 📑 Table of Contents
 
 1. [What Is IncidentDNA?](#1-what-is-incidentdna)
