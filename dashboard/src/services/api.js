@@ -303,8 +303,7 @@ export async function createGitHubIssue(repo, title, body) {
 // ── Repository Info ──────────────────────────────────────────
 
 export async function fetchRepoInfo() {
-    if (!config.useLiveData) return null;
-
+    // Always try — this uses Composio GitHub API, not Snowflake
     const data = await request('/repo');
     return data;
 }

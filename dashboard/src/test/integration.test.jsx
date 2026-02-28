@@ -258,8 +258,8 @@ describe('Integration — Cross-Page Data Consistency', () => {
         const user = userEvent.setup();
         render(<App />);
 
-        // Overview shows INC-001 reference (text split across elements)
-        expect(screen.getByText('INC-001 · payment-service')).toBeInTheDocument();
+        // Overview shows the Live Agent Loop card
+        expect(screen.getByText('Live Agent Loop')).toBeInTheDocument();
 
         // Navigate to incidents page
         await user.click(document.getElementById('nav-incidents'));
