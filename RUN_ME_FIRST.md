@@ -1,72 +1,63 @@
 # ✅ Dependencies Installed!
 
+## IMPORTANT: Use the .venv (Python 3.11)
+
+The system Python is 3.9 and is **incompatible** with crewai/litellm.
+Always activate `.venv` first:
+
+```bash
+source .venv/bin/activate
+python --version  # Must show Python 3.11
+```
+
+---
+
 ## Next Steps:
 
 ### 1. Configure Environment
 ```bash
-# Copy template
-cp .env.example .env
-
-# Edit .env and add your COMPOSIO_API_KEY
-# Get it from: https://app.composio.dev
-nano .env
+# .env is already configured — verify it exists
+cat .env
 ```
 
-### 2. Authenticate with Composio
+### 2. Test Snowflake Connection
 ```bash
-# Activate virtual environment
-source venv/bin/activate
-
-# Login to Composio
-composio login
-
-# Connect GitHub
-composio add github
-
-# Connect Slack
-composio add slack
-
-# Verify
-composio connected-accounts
+source .venv/bin/activate
+python test_agent.py snowflake
 ```
 
-### 3. Setup Snowflake
-
-Login to Snowflake:
-- URL: https://sfsehol-llama_lounge_hackathon_sudhag.snowflakecomputing.com
-- User: `USER`
-- Password: `sn0wf@ll`
-
-Run these SQL files in order:
-```sql
-@snowflake/01_schema.sql
-@snowflake/02_seed_data.sql
-@snowflake/03_dynamic_tables.sql
-```
-
-### 4. Test Everything
+### 3. Run the Agent Pipeline
 ```bash
-python test_setup.py
+source .venv/bin/activate
+python test_agent.py agents
 ```
 
-### 5. Run the System
+### 4. Start Backend API
 ```bash
-# Option A: Start trigger listener
-python ingestion/trigger_listener.py
+source .venv/bin/activate
+python -m uvicorn api:app --reload --port 8000
+```
 
-# Option B: Test with simulation
-python test_crewai_trigger.py
+### 5. Start Dashboard (new terminal)
+```bash
+cd dashboard && npm run dev
+# → http://localhost:5173
 ```
 
 ## Quick Commands
 
 ```bash
-# Always activate venv first
-source venv/bin/activate
+# Always activate .venv first
+source .venv/bin/activate
 
-# Then run any script
-python test_setup.py
-python ingestion/trigger_listener.py
+# Test Snowflake
+python test_agent.py snowflake
+
+# Run full agent pipeline
+python test_agent.py agents
+
+# Start API backend
+python -m uvicorn api:app --reload --port 8000
 ```
 
 Done! 🎉

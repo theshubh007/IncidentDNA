@@ -52,7 +52,7 @@ class _SnowflakeCortexHandler(CustomLLM):
     """LiteLLM custom handler -> SNOWFLAKE.CORTEX.COMPLETE."""
 
     def completion(self, model: str, messages: list, **kwargs: Any) -> ModelResponse:
-        model_name = model.split("/")[-1] if "/" in model else "llama3.1-70b"
+        model_name = model.split("/")[-1] if "/" in model else "claude-sonnet-4-5"
         conn = get_connection()
         cur = None
         try:
@@ -93,8 +93,8 @@ def _make_llm() -> LLM:
 
     # Option 1: Snowflake Cortex (only if explicitly enabled)
     if os.getenv("SNOWFLAKE_CORTEX_ENABLED", "").lower() == "true":
-        print("[LLM] Using Snowflake Cortex llama3.1-70b")
-        return LLM(model="snowflake-cortex/llama3.1-70b", temperature=0.0)
+        print("[LLM] Using Snowflake Cortex claude-sonnet-4-5")
+        return LLM(model="snowflake-cortex/claude-sonnet-4-5", temperature=0.0)
 
     # Option 2: Gemini (Google AI Studio — free tier)
     gemini_key = os.getenv("GEMINI_API_KEY")

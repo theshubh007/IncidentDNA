@@ -1,34 +1,24 @@
 # IncidentDNA - Quick Start Guide
 
-## Automated Setup (Recommended)
+## Setup
 
-### Option 1: Bash Script (Mac/Linux)
+### 1. Activate the Virtual Environment (Python 3.11)
+
 ```bash
-./setup.sh
+source .venv/bin/activate
+python --version  # Must show Python 3.11
 ```
 
-### Option 2: Python Script (Cross-platform)
-```bash
-python setup.py
-```
+> ⚠️ Do NOT use the system `python3` (3.9) — it is incompatible with crewai/litellm.
 
-The setup script will:
-1. ✅ Install Python dependencies
-2. ✅ Create .env file
-3. ✅ Authenticate with Composio
-4. ✅ Connect GitHub
-5. ✅ Connect Slack
-6. ✅ Verify connections
-7. ✅ Guide you through Snowflake setup
+### 2. Install / Update Dependencies
+```bash
+uv pip install -r requirements.txt
+```
 
 ---
 
 ## Manual Setup (Step-by-Step)
-
-### 1. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
 
 ### 2. Configure Environment
 ```bash

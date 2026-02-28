@@ -111,17 +111,34 @@ IncidentDNA/
 
 **All LLM calls go through Snowflake Cortex — no external API key needed.**
 
-`utils/snowflake_llm.py` → `SNOWFLAKE.CORTEX.COMPLETE('llama3.1-70b', messages)`
+`utils/snowflake_llm.py` → `SNOWFLAKE.CORTEX.COMPLETE('claude-sonnet-4-5', messages)`
 
-Model: `llama3.1-70b` | Temperature: `0.0` | Singleton: `cortex_llm`
+Model: `claude-sonnet-4-5` | Temperature: `0.0` | Singleton: `cortex_llm`
+Enabled by: `SNOWFLAKE_CORTEX_ENABLED=true` in `.env`
 
 All 3 agents use: `from utils.snowflake_llm import cortex_llm`
+
+---
+
+## Python Environment
+
+**CRITICAL: Use `.venv` (Python 3.11) — system Python 3.9 is incompatible with crewai/litellm.**
+
+```bash
+source .venv/bin/activate   # always activate first
+python --version            # must show 3.11
+```
+
+The `.venv` was created with `uv` and has all dependencies installed.
 
 ---
 
 ## Run Commands
 
 ```bash
+# Always activate .venv first
+source .venv/bin/activate
+
 # Test Snowflake connection + table existence
 python test_agent.py snowflake
 
@@ -130,6 +147,9 @@ python test_agent.py agents
 
 # Start trigger listener (needs Snowflake + Composio)
 python ingestion/trigger_listener.py
+
+# Start backend API
+python -m uvicorn api:app --reload --port 8000
 
 # Start React dashboard (mock data — works now)
 cd dashboard && npm install && npm run dev

@@ -24,8 +24,12 @@
 
 ## Prerequisites (wait for P1 first)
 ```bash
-cp .env.example .env      # P1 creates this — fill in COMPOSIO_API_KEY
-pip install -r requirements.txt
+# .env is already configured (Snowflake + Composio pre-filled)
+cp .env.example .env      # only if .env doesn't exist yet
+
+# IMPORTANT: Use the .venv (Python 3.11) — system Python 3.9 won't work
+source .venv/bin/activate
+uv pip install -r requirements.txt
 ```
 
 P1's tables you query:

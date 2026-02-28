@@ -10,25 +10,31 @@ When a deploy goes wrong, IncidentDNA detects the anomaly, runs 3 AI agents to i
 ## Quick Start
 
 ```bash
-# 1. Install Python deps
-pip install -r requirements.txt
+# 1. Activate the virtual environment (Python 3.11 — required)
+source .venv/bin/activate
 
-# 2. Copy credentials
-cp .env.example .env        # already filled in — just copy it
+# 2. Install Python deps
+uv pip install -r requirements.txt
 
-# 3. Verify Snowflake connection
+# 3. Copy credentials (already filled in)
+cp .env.example .env
+
+# 4. Verify Snowflake connection
 python test_agent.py snowflake
 
-# 4. Run the full AI pipeline (Slack + GitHub will fire)
+# 5. Run the full AI pipeline (Slack + GitHub will fire)
 python test_agent.py agents
 
-# 5. Start the backend API
-python3 -m uvicorn api:app --reload --port 8000
+# 6. Start the backend API
+python -m uvicorn api:app --reload --port 8000
 
-# 6. Start the dashboard (new terminal)
+# 7. Start the dashboard (new terminal)
 cd dashboard && npm install && npm run dev
 # → http://localhost:5173
 ```
+
+> ⚠️ Always use `source .venv/bin/activate` before running any Python command.
+> The system Python is 3.9 and is incompatible — `.venv` uses Python 3.11.
 
 ---
 
@@ -110,7 +116,7 @@ test_agent.py   python test_agent.py [snowflake|agents]
 
 | What | Value |
 |------|-------|
-| LLM | Gemini 2.5 Flash (auto-falls back to Groq) |
+| LLM | claude-sonnet-4-5 via Snowflake Cortex |
 | GitHub issues → | [theshubh007/IncidentDNA](https://github.com/theshubh007/IncidentDNA) |
 | Slack alerts → | `#incidents` |
 | Composio user | `pg-test-a6c32032-f3c5-43d2-9090-e16ffbd46f0d` |

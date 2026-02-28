@@ -2,30 +2,29 @@
 
 ## Prerequisites
 
-- Python 3.8+
-- pip or pip3
+- Python 3.11+ (system has `uv` which manages this automatically)
 - Access to Snowflake account
 - Composio account (free at https://app.composio.dev)
 
-## Step 1: Create Virtual Environment (Recommended)
+## Step 1: Activate the Virtual Environment
+
+The `.venv` (Python 3.11) is already created. Just activate it:
 
 ```bash
-# Create virtual environment
-python3 -m venv venv
+source .venv/bin/activate
 
-# Activate it
-source venv/bin/activate  # Mac/Linux
-# OR
-venv\Scripts\activate  # Windows
-
-# Verify activation (should show venv path)
-which python
+# Verify — should show Python 3.11
+python --version
 ```
+
+> **Note:** Do NOT use `python3 -m venv venv` or `pip install` directly.
+> The system Python is 3.9 and is incompatible with crewai/litellm.
+> Always use `.venv` (created with `uv`, Python 3.11).
 
 ## Step 2: Install Dependencies
 
 ```bash
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 ## Step 3: Configure Environment
@@ -100,12 +99,10 @@ python import_crewai_to_snowflake.py
 
 ### Virtual Environment Issues
 
-If you get "externally-managed-environment" error:
+Always use the `.venv` with Python 3.11 — system Python 3.9 will fail:
 ```bash
-# Create and activate venv first
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+source .venv/bin/activate
+uv pip install -r requirements.txt
 ```
 
 ### Composio Not Found
@@ -132,13 +129,13 @@ SNOWFLAKE_DATABASE=INCIDENTDNA
 
 ```bash
 # Activate venv
-source venv/bin/activate
+source .venv/bin/activate
 
 # Install deps
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 
 # Test
-python test_setup.py
+python test_agent.py snowflake
 
 # Run
 python ingestion/trigger_listener.py
