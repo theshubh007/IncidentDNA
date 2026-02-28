@@ -7,5 +7,5 @@ def make_crew(agents: list, tasks: list) -> Crew:
         agents=agents,
         tasks=tasks,
         process=Process.sequential,
-        verbose=True,
+        verbose=False,
     )

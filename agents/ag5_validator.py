@@ -22,8 +22,9 @@ def make_validator() -> Agent:
             "You output clean JSON with your verdict and specific objections."
         ),
         tools=[QuerySnowflakeTool()],
-        verbose=True,
+        verbose=False,
         allow_delegation=False,
+        max_iter=2,
     )
 
 

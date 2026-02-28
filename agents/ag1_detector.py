@@ -19,8 +19,9 @@ def make_detector() -> Agent:
             "to map the blast radius. You output clean, valid JSON — nothing else."
         ),
         tools=[QuerySnowflakeTool()],
-        verbose=True,
+        verbose=False,
         allow_delegation=False,
+        max_iter=2,
     )
 
 

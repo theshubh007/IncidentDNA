@@ -25,8 +25,9 @@ def make_investigator() -> Agent:
             "You are the most important agent in the pipeline — precision matters."
         ),
         tools=[SearchRunbooksTool(), FindSimilarIncidentsTool(), QuerySnowflakeTool()],
-        verbose=True,
+        verbose=False,
         allow_delegation=False,
+        max_iter=3,
     )
 
 

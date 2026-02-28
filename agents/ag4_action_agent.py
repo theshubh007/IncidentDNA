@@ -19,8 +19,9 @@ def make_action_agent() -> Agent:
             "options, and event tracking info. You never send duplicate notifications."
         ),
         tools=[QuerySnowflakeTool()],
-        verbose=True,
+        verbose=False,
         allow_delegation=False,
+        max_iter=2,
     )
 
 

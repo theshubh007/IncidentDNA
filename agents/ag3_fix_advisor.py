@@ -22,8 +22,9 @@ def make_fix_advisor() -> Agent:
             "You cross-reference runbooks and past incident fixes to provide proven solutions."
         ),
         tools=[SearchRunbooksTool(), FindSimilarIncidentsTool(), QuerySnowflakeTool()],
-        verbose=True,
+        verbose=False,
         allow_delegation=False,
+        max_iter=2,
     )
 
 

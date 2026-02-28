@@ -18,7 +18,7 @@ from agents.crew import make_crew
 from tools.composio_actions import post_slack_alert, create_github_issue
 from utils.snowflake_conn import run_dml
 
-MAX_DEBATE_ROUNDS = 2
+MAX_DEBATE_ROUNDS = 1
 
 
 # ---------------------------------------------------------------------------
