@@ -91,7 +91,7 @@ cd dashboard && npm install && npm run dev
 | Trigger Listener | trigger_listener.py | ✅ Done |
 | Backend API | api.py | ✅ Done (for React live data) |
 
-_Last updated: 2026-02-28 16:02 by scripts/gen_architecture.py_
+_Last updated: 2026-02-28 16:21 by scripts/gen_architecture.py_
 <!-- STATUS_END -->
 
 ---
