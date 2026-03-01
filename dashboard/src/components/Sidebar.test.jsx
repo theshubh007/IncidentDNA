@@ -14,7 +14,6 @@ describe('Sidebar Component', () => {
         expect(screen.getByText('Overview')).toBeInTheDocument();
         expect(screen.getByText('Incidents')).toBeInTheDocument();
         expect(screen.getByText('Releases')).toBeInTheDocument();
-        expect(screen.getByText('Services')).toBeInTheDocument();
         expect(screen.getByText('Runbooks')).toBeInTheDocument();
         expect(screen.getByText('Postmortems')).toBeInTheDocument();
         expect(screen.getByText('Audit Log')).toBeInTheDocument();
@@ -40,7 +39,7 @@ describe('Sidebar Component', () => {
 
     it('has unique IDs for each nav item', () => {
         renderWithProviders(<Sidebar />);
-        const navIds = ['nav-overview', 'nav-incidents', 'nav-releases', 'nav-services', 'nav-runbooks', 'nav-postmortems', 'nav-audit', 'nav-repository', 'nav-settings'];
+        const navIds = ['nav-overview', 'nav-incidents', 'nav-releases', 'nav-runbooks', 'nav-postmortems', 'nav-audit', 'nav-repository', 'nav-settings'];
         navIds.forEach(id => {
             expect(document.getElementById(id)).toBeInTheDocument();
         });

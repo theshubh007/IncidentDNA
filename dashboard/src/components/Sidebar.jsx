@@ -16,7 +16,6 @@ const NAV_SECTIONS = [
         items: [
             { id: 'overview', label: 'Overview', icon: LayoutDashboard, path: '/' },
             { id: 'incidents', label: 'Incidents', icon: AlertTriangle, path: '/incidents' },
-            { id: 'services', label: 'Services', icon: Server, path: '/services' },
         ],
     },
     {

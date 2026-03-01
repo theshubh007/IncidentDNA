@@ -40,17 +40,6 @@ describe('Integration — App Routing', () => {
         });
     });
 
-    it('navigates to Services page via sidebar', async () => {
-        const user = userEvent.setup();
-        render(<App />);
-
-        await user.click(document.getElementById('nav-services'));
-
-        await waitFor(() => {
-            expect(document.getElementById('services-page')).toBeInTheDocument();
-        });
-    });
-
     it('navigates to Postmortems page via sidebar', async () => {
         const user = userEvent.setup();
         render(<App />);
