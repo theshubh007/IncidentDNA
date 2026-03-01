@@ -112,10 +112,10 @@ class TestMessageFormatting(unittest.TestCase):
         _assert_no_emoji(msg, "Scenario 1 Slack")
         _assert_structured(msg, [
             "*Root Cause:*", "*Fix Applied:*", "*Commands Executed:*",
-            "*Blast Radius:*", "*Evidence:*", "*Confidence:*", "*MTTR:*",
-            "*Resolution Rule:*", "*Event ID:*", "config/database.yml",
+            "*Blast Radius:*", "*Evidence:*", "*MTTR:*",
+            "*Rule:*", "config/database.yml",
+            "evt-latency-001",
         ], "Scenario 1 Slack")
-        assert "payment-service" in msg
         assert "R1_HIGH_CONF_LOW_RISK" in msg
 
         # Test GitHub issue
@@ -173,10 +173,11 @@ class TestMessageFormatting(unittest.TestCase):
         msg = payload["text"]
         _assert_no_emoji(msg, "Scenario 2 Slack")
         _assert_structured(msg, [
-            "*[HIGH] INCIDENT DETECTED", "*Service:*", "*Incident Type:*",
-            "*Root Cause:*", "*Blast Radius:*", "*Confidence:*", "*Evidence:*",
-            "*Fix Option 1:*", "*Fix Option 2:*", "*Resolution Rule:*",
+            "*[HIGH] INCIDENT DETECTED", "*Incident Type:*",
+            "*Root Cause:*", "*Blast Radius:*", "*Evidence:*",
+            "*Fix Option 1:*", "*Fix Option 2:*", "*Rule:*",
             "AuthSessionManager.java", "k8s/deployment.yaml",
+            "evt-memleak-002",
         ], "Scenario 2 Slack")
         assert "PERFORMANCE" in msg
         assert "awaiting human approval" in msg
@@ -209,10 +210,11 @@ class TestMessageFormatting(unittest.TestCase):
         _assert_no_emoji(msg, "Scenario 3 Slack")
         _assert_structured(msg, [
             "*[CRITICAL] SECURITY INCIDENT", "Human Review Required",
-            "*Service:*", "*Incident Type:*", "SECURITY",
+            "*Incident Type:*", "SECURITY",
             "*Root Cause:*", "SearchDAO", "SearchController",
             "*Fix Option 1:*", "SearchDAO.java",
             "NO AUTO-ACTIONS TAKEN",
+            "evt-sqli-003",
         ], "Scenario 3 Slack")
 
         # GitHub issue for security incident
@@ -258,10 +260,9 @@ class TestMessageFormatting(unittest.TestCase):
         _assert_no_emoji(msg, "Scenario 4 Slack")
         _assert_structured(msg, [
             "*[LOW] INCIDENT DETECTED", "Low Confidence",
-            "*Service:*", "notification-service",
             "*Root Cause:*", "ImagePullBackOff",
-            "*Confidence:*", "35%",
             "immediate human investigation required",
+            "evt-deploy-004",
         ], "Scenario 4 Slack")
 
     # ── Scenario 5: CI Pipeline Failure + Recovery ───────────────────────
@@ -283,12 +284,13 @@ class TestMessageFormatting(unittest.TestCase):
         msg_fail = payload_fail["text"]
         _assert_no_emoji(msg_fail, "Scenario 5 CI Fail Slack")
         _assert_structured(msg_fail, [
-            "*[CI FAIL] Pipeline Failure", "data-pipeline-service",
+            "*[CI FAIL] Pipeline Failure",
             "*Workflow:*", "build-and-test",
             "*Conclusion:*", "FAILURE",
             "*Branch:*", "fix/etl-timeout",
             "*Commit:*", "a1b2c3d",
-            "autonomous agents have been triggered",
+            "autonomous agents triggered",
+            "evt-ci-005",
         ], "Scenario 5 CI Fail Slack")
 
         # Part B: CI confirmed (fix verified)
@@ -303,11 +305,12 @@ class TestMessageFormatting(unittest.TestCase):
         msg_pass = payload_pass["text"]
         _assert_no_emoji(msg_pass, "Scenario 5 CI Pass Slack")
         _assert_structured(msg_pass, [
-            "*[CI PASS] Fix Verified", "data-pipeline-service",
+            "*[CI PASS] Fix Verified",
             "*Workflow:*", "build-and-test",
             "*Branch:*", "fix/etl-timeout",
             "*Commit:*", "d4e5f6g",
             "All checks passed",
+            "evt-ci-005",
         ], "Scenario 5 CI Pass Slack")
 
     # ── Cross-cutting: GitHub issue has table + checklist + commands ──────

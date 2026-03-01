@@ -177,10 +177,8 @@ def post_slack_alert(
             fix_lines += f"  {i}. *{title}* (risk: {risk}{cmd_str}{loc_str})\n"
 
     message = (
-        f"*[{severity}] INCIDENT DETECTED — IncidentDNA*\n"
+        f"`{event_id}` | *[{severity}] INCIDENT DETECTED*\n"
         f"---\n"
-        f"*Service:* `{service}`\n"
-        f"*Severity:* `{severity}`\n"
         f"*Root Cause:* {root_cause}\n"
         f"*Blast Radius:* {blast_str}\n"
         f"*Evidence:* {evidence_str}\n"
@@ -189,8 +187,7 @@ def post_slack_alert(
         message += f"*Recommended Fixes:*\n{fix_lines}"
     message += (
         f"---\n"
-        f"*Event ID:* `{event_id}`\n"
-        f"*Pipeline:* Autonomous investigation in progress. Agents evaluating fix options."
+        f"Autonomous investigation in progress. Agents evaluating fix options."
     )
 
     channel = os.getenv("SLACK_CHANNEL", "team-spartans").lstrip("#")
@@ -346,7 +343,7 @@ def post_slack_alert_auto_resolved(
             fix_loc = f"*File:* `{loc}`\n"
 
     message = (
-        f"*[{severity}] AUTO-RESOLVED — `{service}`*\n"
+        f"`{event_id}` | *[{severity}] AUTO-RESOLVED*\n"
         f"---\n"
         f"*Root Cause:* {root_cause}\n"
         f"*Fix Applied:* {fix_desc}\n"
@@ -359,10 +356,8 @@ def post_slack_alert_auto_resolved(
         f"*Blast Radius:* {blast_str}\n"
         f"*Evidence:* {evidence_str}\n"
         f"---\n"
-        f"*Confidence:* `{confidence:.0%}` | *MTTR:* `{mttr_seconds}s`\n"
-        f"*Resolution Rule:* `{rule_applied}`\n"
-        f"*Status:* Resolved autonomously. No human intervention required.\n"
-        f"*Event ID:* `{event_id}`"
+        f"*MTTR:* `{mttr_seconds}s` | *Rule:* `{rule_applied}`\n"
+        f"Resolved autonomously. No human intervention required."
     )
 
     channel = os.getenv("SLACK_CHANNEL", "team-spartans").lstrip("#")
@@ -416,13 +411,11 @@ def post_slack_alert_escalation(
         status_line = "Root cause unclear — immediate human investigation required"
 
     message = (
-        f"*[{severity}]* {header}\n"
+        f"`{event_id}` | *[{severity}]* {header}\n"
         f"---\n"
-        f"*Service:* `{service}`\n"
         f"*Incident Type:* `{incident_type}`\n"
         f"*Root Cause:* {root_cause}\n"
         f"*Blast Radius:* {blast_str}\n"
-        f"*Confidence:* `{confidence:.0%}`\n"
         f"*Evidence:* {evidence_str}\n"
     )
 
@@ -438,9 +431,7 @@ def post_slack_alert_escalation(
 
     message += (
         f"---\n"
-        f"*Resolution Rule:* `{rule_applied}`\n"
-        f"*Status:* {status_line}\n"
-        f"*Event ID:* `{event_id}`"
+        f"*Rule:* `{rule_applied}` | *Status:* {status_line}"
     )
 
     if incident_type == "SECURITY":
@@ -482,14 +473,12 @@ def post_slack_ci_confirmed(
         return f"SKIPPED_DUPLICATE (previous: {prev})"
 
     message = (
-        f"*[CI PASS] Fix Verified — `{service}`*\n"
+        f"`{event_id}` | *[CI PASS] Fix Verified*\n"
         f"---\n"
         f"*Workflow:* `{workflow}`\n"
         f"*Branch:* `{branch}` | *Commit:* `{sha}`\n"
         f"*Result:* All checks passed. Incident fix confirmed by CI pipeline.\n"
-        f"*Run URL:* {url}\n"
-        f"---\n"
-        f"*Event ID:* `{event_id}`"
+        f"*Run URL:* {url}"
     )
 
     channel = os.getenv("SLACK_CHANNEL", "team-spartans").lstrip("#")
@@ -523,15 +512,13 @@ def post_slack_ci_failure(
         return f"SKIPPED_DUPLICATE (previous: {prev})"
 
     message = (
-        f"*[CI FAIL] Pipeline Failure — `{service}`*\n"
+        f"`{event_id}` | *[CI FAIL] Pipeline Failure*\n"
         f"---\n"
         f"*Workflow:* `{workflow}`\n"
         f"*Conclusion:* `{conclusion.upper()}`\n"
         f"*Branch:* `{branch}` | *Commit:* `{sha}`\n"
-        f"*Action:* IncidentDNA autonomous agents have been triggered. Investigation in progress.\n"
-        f"*Run URL:* {url}\n"
-        f"---\n"
-        f"*Event ID:* `{event_id}`"
+        f"*Action:* IncidentDNA autonomous agents triggered. Investigation in progress.\n"
+        f"*Run URL:* {url}"
     )
 
     channel = os.getenv("SLACK_CHANNEL", "team-spartans").lstrip("#")
