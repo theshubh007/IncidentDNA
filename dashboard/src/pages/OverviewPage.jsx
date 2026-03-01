@@ -386,12 +386,18 @@ export default function OverviewPage() {
     const [steps, setSteps] = useState(STEPPER_STATES);
     const [graph, setGraph] = useState(DEPENDENCY_GRAPH);
     const [incidents, setIncidents] = useState(INCIDENTS_DATA);
-    const [repo, setRepo] = useState(null);
+    const REPO_CACHE_KEY = 'incidentdna_repo_cache';
+
+    const [repo, setRepo] = useState(() => {
+        try {
+            const cached = localStorage.getItem(REPO_CACHE_KEY);
+            return cached ? JSON.parse(cached) : null;
+        } catch { return null; }
+    });
 
     useEffect(() => {
         let cancelled = false;
         const load = async () => {
-            // Fetch mock/live incident data + GitHub repo data in parallel
             const [m, s, g, inc, repoData] = await Promise.all([
                 fetchMetrics(),
                 fetchStepperState('INC-001'),
@@ -404,7 +410,10 @@ export default function OverviewPage() {
             setSteps(s);
             setGraph(g);
             setIncidents(inc);
-            if (repoData) setRepo(repoData);
+            if (repoData) {
+                setRepo(repoData);
+                try { localStorage.setItem(REPO_CACHE_KEY, JSON.stringify(repoData)); } catch {}
+            }
         };
         load();
         const interval = setInterval(load, 30000);
