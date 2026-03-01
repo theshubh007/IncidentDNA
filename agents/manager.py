@@ -604,7 +604,34 @@ Return ONLY JSON:
     ts_actions = datetime.now(timezone.utc)
     mttr_seconds = int((ts_actions - ts_detected).total_seconds())
 
-    # Execute actions conditioned on threshold decision
+    # ── 5a: Create GitHub issue FIRST — extract issue_url for Slack button ──
+    repo_env = os.getenv("GITHUB_REPO", "")
+    gh_owner, gh_repo_name = (repo_env.split("/") + [""])[:2]
+
+    fix_label = f"[AUTO-RESOLVED] {fix}" if threshold["decision"] == "AUTO_RESOLVE" else fix
+    github_raw = create_github_issue(
+        event["event_id"], event["service"], severity,
+        root_cause, fix_label,
+        blast_radius=blast_radius, fix_options=fix_options,
+        evidence_sources=investigation.get("evidence_sources"),
+        confidence=threshold["confidence"],
+        threshold_decision=threshold["decision"],
+        rule_applied=threshold["rule_applied"],
+    )
+
+    # Extract issue URL and number from response dict (backward-compat with str fallback)
+    if isinstance(github_raw, dict):
+        github_status = github_raw.get("status", "UNKNOWN")
+        issue_url     = github_raw.get("issue_url", "")
+        issue_number  = github_raw.get("issue_number")
+    else:
+        github_status = str(github_raw)
+        issue_url     = ""
+        issue_number  = None
+
+    print(f"[AG4] GitHub -> {github_status} | issue_url={issue_url or 'N/A'}")
+
+    # ── 5b: Execute actions conditioned on threshold decision ───────────────
     if threshold["decision"] == "AUTO_RESOLVE":
         print("[MANAGER] AUTO-RESOLVE path — executing fix + sending auto-resolved alerts")
 
@@ -613,21 +640,19 @@ Return ONLY JSON:
         simulate_fix_execution(fix_cmd, event["service"])
         inject_recovery_metrics(event["service"], delay_seconds=2.0)
 
+        # Auto-close the GitHub issue since we resolved it
+        if issue_number and gh_owner and gh_repo_name:
+            from tools.composio_actions import close_github_issue
+            close_result = close_github_issue(event["event_id"], gh_owner, gh_repo_name, issue_number)
+            print(f"[AG4] GitHub close -> {close_result}")
+
         slack_result = post_slack_alert_auto_resolved(
             event["event_id"], event["service"], severity, root_cause,
             blast_radius=blast_radius, fix_options=fix_options,
             confidence=threshold["confidence"], mttr_seconds=mttr_seconds,
             evidence_sources=investigation.get("evidence_sources"),
             rule_applied=threshold["rule_applied"],
-        )
-        github_result = create_github_issue(
-            event["event_id"], event["service"], severity,
-            root_cause, f"[AUTO-RESOLVED] {fix}",
-            blast_radius=blast_radius, fix_options=fix_options,
-            evidence_sources=investigation.get("evidence_sources"),
-            confidence=threshold["confidence"],
-            threshold_decision=threshold["decision"],
-            rule_applied=threshold["rule_applied"],
+            issue_url=issue_url,
         )
     else:
         print(f"[MANAGER] HUMAN_ESCALATION path — urgency={threshold.get('urgency')}")
@@ -639,16 +664,10 @@ Return ONLY JSON:
             confidence=threshold["confidence"],
             evidence_sources=investigation.get("evidence_sources"),
             rule_applied=threshold["rule_applied"],
-        )
-        github_result = create_github_issue(
-            event["event_id"], event["service"], severity, root_cause, fix,
-            blast_radius=blast_radius, fix_options=fix_options,
-            evidence_sources=investigation.get("evidence_sources"),
-            confidence=threshold["confidence"],
-            threshold_decision=threshold["decision"],
-            rule_applied=threshold["rule_applied"],
+            issue_url=issue_url,
         )
 
+    github_result = github_status  # string for logging / result dict
     print(f"[AG4] Slack  -> {slack_result}")
     print(f"[AG4] GitHub -> {github_result}")
 

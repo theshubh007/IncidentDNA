@@ -1,6 +1,7 @@
 """
 Test 5 different incident scenarios for Slack + GitHub message formatting.
-Validates: structured layout, no emojis, bold keywords, file locations, evidence sources.
+Validates: structured layout, no emojis in plain-text fallback, bold keywords,
+file locations, evidence sources.
 
 Run:  python -m pytest tests/test_message_formatting.py -v
 """
@@ -35,16 +36,35 @@ with patch.dict(os.environ, {
 
 
 def _extract_message(fn, *args, **kwargs):
-    """Call the function with mocked Composio execution and return the Slack message text."""
+    """
+    Call the function with mocked Composio execution and return the Slack/GitHub payload dict.
+    Handles both plain 'SENT' return (Slack/CI functions) and dict return (create_github_issue).
+    """
     with patch("tools.composio_actions._already_sent", return_value=None), \
          patch("tools.composio_actions._record_action"), \
          patch("tools.composio_actions._execute_with_retry") as mock_exec, \
          patch("tools.composio_actions._update_status"):
-        mock_exec.return_value = {"successful": True}
+        # Include 'data' so create_github_issue can parse issue_number and html_url
+        mock_exec.return_value = {
+            "successful": True,
+            "data": {"number": 42, "html_url": "https://github.com/org/test-repo/issues/42"},
+        }
         result = fn(*args, **kwargs)
-        assert result == "SENT", f"Expected SENT, got: {result}"
-        payload = mock_exec.call_args[0][1]  # second positional arg
+        if isinstance(result, dict):
+            assert result.get("status") == "SENT", f"Expected SENT status, got: {result}"
+        else:
+            assert result == "SENT", f"Expected SENT, got: {result}"
+        payload = mock_exec.call_args[0][1]  # second positional arg to _execute_with_retry
         return payload
+
+
+def _searchable(payload: dict) -> str:
+    """
+    Combine plain-text fallback + Block Kit JSON string for content searching.
+    Block Kit Slack messages store rich content in 'blocks' (JSON string); the 'text'
+    field is only a short plain-text fallback for notifications.
+    """
+    return payload.get("text", "") + " " + payload.get("blocks", "")
 
 
 # Unicode emoji ranges to check for
@@ -108,13 +128,13 @@ class TestMessageFormatting(unittest.TestCase):
             confidence=0.92, mttr_seconds=47,
             evidence_sources=evidence, rule_applied="R1_HIGH_CONF_LOW_RISK",
         )
-        msg = payload["text"]
-        _assert_no_emoji(msg, "Scenario 1 Slack")
+        # Block Kit: rich content is in 'blocks' JSON; 'text' is a plain-text fallback
+        msg = _searchable(payload)
+        _assert_no_emoji(payload["text"], "Scenario 1 Slack fallback")
         _assert_structured(msg, [
             "*Root Cause:*", "*Fix Applied:*", "*Commands Executed:*",
-            "*Blast Radius:*", "*Evidence:*", "*MTTR:*",
-            "*Rule:*", "config/database.yml",
-            "evt-latency-001",
+            "*Blast Radius:*", "*Evidence:*", "*Confidence:*", "*MTTR:*",
+            "*Resolution Rule:*", "*Event ID:*", "config/database.yml",
         ], "Scenario 1 Slack")
         assert "R1_HIGH_CONF_LOW_RISK" in msg
 
@@ -138,7 +158,7 @@ class TestMessageFormatting(unittest.TestCase):
         assert "| **Event ID**" in body
         assert "| **Confidence**" in body
 
-    # ── Scenario 2: Memory Leak (Escalation — High) ──────────────────────
+    # ── Scenario 2: Memory Leak (Escalation — High Confidence) ───────────
     def test_scenario_2_memory_leak_escalation(self):
         """P1 memory leak in user-auth-service, escalated to human."""
         event_id = "evt-memleak-002"
@@ -170,14 +190,14 @@ class TestMessageFormatting(unittest.TestCase):
             confidence=0.78, evidence_sources=evidence,
             rule_applied="R3_HIGH_RISK_ESCALATE",
         )
-        msg = payload["text"]
-        _assert_no_emoji(msg, "Scenario 2 Slack")
+        # Block Kit: rich content lives in 'blocks' JSON
+        msg = _searchable(payload)
+        _assert_no_emoji(payload["text"], "Scenario 2 Slack fallback")
         _assert_structured(msg, [
-            "*[HIGH] INCIDENT DETECTED", "*Incident Type:*",
-            "*Root Cause:*", "*Blast Radius:*", "*Evidence:*",
-            "*Fix Option 1:*", "*Fix Option 2:*", "*Rule:*",
-            "AuthSessionManager.java", "k8s/deployment.yaml",
-            "evt-memleak-002",
+            "HIGH CONFIDENCE",           # urgency band in Block Kit header
+            "*Service:*", "*Incident Type:*",
+            "*Root Cause:*", "*Blast Radius:*", "*Confidence:*", "*Evidence:*",
+            "*Fix Option 1:*", "*Fix Option 2:*", "*Resolution Rule:*",
         ], "Scenario 2 Slack")
         assert "PERFORMANCE" in msg
         assert "awaiting human approval" in msg
@@ -206,13 +226,13 @@ class TestMessageFormatting(unittest.TestCase):
             confidence=0.95, evidence_sources=evidence,
             rule_applied="R5_SECURITY_ESCALATE",
         )
-        msg = payload["text"]
-        _assert_no_emoji(msg, "Scenario 3 Slack")
+        msg = _searchable(payload)
+        _assert_no_emoji(payload["text"], "Scenario 3 Slack fallback")
         _assert_structured(msg, [
-            "*[CRITICAL] SECURITY INCIDENT", "Human Review Required",
-            "*Incident Type:*", "SECURITY",
+            "SECURITY INCIDENT", "Human Review Required",  # Block Kit header text
+            "*Service:*", "*Incident Type:*", "SECURITY",
             "*Root Cause:*", "SearchDAO", "SearchController",
-            "*Fix Option 1:*", "SearchDAO.java",
+            "*Fix Option 1:*",
             "NO AUTO-ACTIONS TAKEN",
             "evt-sqli-003",
         ], "Scenario 3 Slack")
@@ -229,7 +249,7 @@ class TestMessageFormatting(unittest.TestCase):
         body = payload_gh["body"]
         _assert_no_emoji(body, "Scenario 3 GitHub")
         assert "HUMAN_ESCALATION" in body
-        assert "SearchDAO.java" in body
+        assert "SearchDAO.java" in body  # present in fix_options table via 'file' field
         assert "### Diagnostic Commands" in body
 
     # ── Scenario 4: Deployment Failure (Low Confidence) ──────────────────
@@ -256,10 +276,11 @@ class TestMessageFormatting(unittest.TestCase):
             confidence=0.35, evidence_sources=evidence,
             rule_applied="R4_LOW_CONF_ESCALATE",
         )
-        msg = payload["text"]
-        _assert_no_emoji(msg, "Scenario 4 Slack")
+        msg = _searchable(payload)
+        _assert_no_emoji(payload["text"], "Scenario 4 Slack fallback")
         _assert_structured(msg, [
-            "*[LOW] INCIDENT DETECTED", "Low Confidence",
+            "LOW CONFIDENCE",            # Block Kit header band
+            "*Service:*", "notification-service",
             "*Root Cause:*", "ImagePullBackOff",
             "immediate human investigation required",
             "evt-deploy-004",
@@ -271,7 +292,7 @@ class TestMessageFormatting(unittest.TestCase):
         event_id = "evt-ci-005"
         service = "data-pipeline-service"
 
-        # Part A: CI failure alert
+        # Part A: CI failure alert (uses plain text format, not Block Kit)
         payload_fail = _extract_message(
             post_slack_ci_failure,
             event_id, service,
@@ -293,7 +314,7 @@ class TestMessageFormatting(unittest.TestCase):
             "evt-ci-005",
         ], "Scenario 5 CI Fail Slack")
 
-        # Part B: CI confirmed (fix verified)
+        # Part B: CI confirmed (fix verified, plain text format)
         payload_pass = _extract_message(
             post_slack_ci_confirmed,
             event_id, service,

@@ -113,7 +113,22 @@ pause(1.5)
 
 chapter(1, "The Problem  —  A Deploy Just Hit Production")
 
-print(f"  [{ts()}]  Deploy DPL-20241129-0042 just went live on payment-service")
+# FortressAI background — what caused the incident
+print("  ┌─────────────────────────────────────────────────────────────┐")
+print("  │  FortressAI — broker/db_pool.py  (shipped 14:23:07 UTC)    │")
+print("  │                                                              │")
+print("  │  New feature: DB connection pool + automatic retry logic    │")
+print("  │  All 19 unit tests PASSED ✓  Peer review approved ✓        │")
+print("  │                                                              │")
+print("  │  The hidden bug:                                             │")
+print("  │    @with_db_retry holds the connection DURING backoff sleep │")
+print("  │    3 retries × (1s + 2s + 4s) = 7s per failed request     │")
+print("  │    20 concurrent requests × 7s → all pool slots exhausted  │")
+print("  └─────────────────────────────────────────────────────────────┘")
+print()
+pause(1.2)
+
+print(f"  [{ts()}]  Deploy DPL-20241129-0042 (FortressAI db_pool) hit payment-service")
 pause(0.8)
 print(f"  [{ts()}]  Composio webhook received — trigger_listener.py activated")
 pause(0.5)
